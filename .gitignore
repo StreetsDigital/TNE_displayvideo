@@ -1,0 +1,51 @@
+# Environment files with real credentials
+# Templates (.env.dev, .env.production, .env.staging) are kept in git with placeholders
+# The actual .env file with real passwords should NEVER be committed
+.env
+deployment/.env
+
+# SSL certificates and private keys
+deployment/ssl/*.pem
+deployment/ssl/*.key
+deployment/ssl/*.crt
+
+# Nginx logs
+deployment/nginx-logs/
+*.log
+
+# Docker volumes and data
+deployment/redis-data/
+
+# Go build artifacts
+catalyst
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+vendor/
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# OS files
+Thumbs.db
+desktop.ini
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Coverage and profiling
+*.coverprofile
+coverage.html
+cpu.prof
+mem.prof
