@@ -99,96 +99,17 @@ PBS_PORT=8000 go run cmd/server/main.go
 
 The server will start on `http://localhost:8000`.
 
-### Using Docker Compose
-
-For a complete local environment with all dependencies:
-
-```bash
-# Clone the dev environment
-git clone https://github.com/yourusername/tne-dev-env.git
-cd tne-dev-env
-
-# Start all services (Catalyst, IDR, Redis, PostgreSQL)
-docker-compose up -d
-
-# View Catalyst logs
-docker-compose logs -f catalyst
-
-# Stop services
-docker-compose down
-```
-
-Catalyst will be available at `http://localhost:8000`.
-
 ---
 
 ## Deployment
 
-### Fly.io (Recommended for Production)
+For production deployment to **catalyst.springwire.ai**:
 
-```bash
-# Install Fly CLI
-curl -L https://fly.io/install.sh | sh
+- **[DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md)** - Quick start guide (~30 minutes)
+- **[deployment/README.md](deployment/README.md)** - Comprehensive deployment documentation
+- **[deployment/DEPLOYMENT-CHECKLIST.md](deployment/DEPLOYMENT-CHECKLIST.md)** - Pre-deployment checklist
 
-# Login to Fly
-fly auth login
-
-# Deploy
-fly deploy
-
-# Set secrets
-fly secrets set \
-  REDIS_URL=redis://your-redis-host:6379/0 \
-  DATABASE_URL=postgresql://user:pass@host:5432/catalyst \
-  IDR_URL=https://your-idr-instance.com \
-  PBS_HOST_URL=https://catalyst.springwire.ai
-
-# Scale as needed
-fly scale count 3  # 3 instances
-fly scale vm shared-cpu-2x  # Upgrade CPU/RAM
-```
-
-### AWS Lightsail
-
-```bash
-# Create instance
-aws lightsail create-container-service \
-  --service-name tne-catalyst \
-  --power small \
-  --scale 2
-
-# Build and push image
-docker build -t tne-catalyst:latest .
-aws lightsail push-container-image \
-  --service-name tne-catalyst \
-  --label catalyst \
-  --image tne-catalyst:latest
-
-# Deploy
-aws lightsail create-container-service-deployment \
-  --service-name tne-catalyst \
-  --containers file://containers.json \
-  --public-endpoint file://public-endpoint.json
-```
-
-### Docker
-
-```bash
-# Build image
-docker build -t tne-catalyst:latest .
-
-# Run container
-docker run -d \
-  --name catalyst \
-  -p 8000:8000 \
-  -e PBS_PORT=8000 \
-  -e PBS_HOST_URL=https://catalyst.springwire.ai \
-  -e REDIS_URL=redis://redis:6379/0 \
-  -e IDR_URL=http://idr:5050 \
-  -e IVT_MONITORING_ENABLED=true \
-  -e IVT_BLOCKING_ENABLED=true \
-  tne-catalyst:latest
-```
+All deployment is via Docker Compose on catalyst.springwire.ai.
 
 ---
 
