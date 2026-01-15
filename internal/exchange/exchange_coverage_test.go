@@ -123,7 +123,7 @@ func TestExtractPublisherID_EmptyID(t *testing.T) {
 
 // TestExtractPublisherID_NotFound tests publisher ID extraction when not present
 func TestExtractPublisherID_NotFound(t *testing.T) {
-	type noPublisherID struct{
+	type noPublisherID struct {
 		SomeField string
 	}
 	obj := &noPublisherID{SomeField: "value"}
