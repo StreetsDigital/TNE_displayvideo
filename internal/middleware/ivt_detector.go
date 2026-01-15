@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/oschwald/geoip2-golang"
 	"github.com/rs/zerolog/log"
 )
 
@@ -28,6 +29,7 @@ type IVTConfig struct {
 	BlockedCountries     []string // Blacklist of country codes
 	SuspiciousUAPatterns []string // Regex patterns for suspicious user agents
 	RequireReferer       bool     // Require referer header (strict mode)
+	GeoIPDBPath          string   // Path to MaxMind GeoIP2/GeoLite2 database file
 }
 
 // DefaultIVTConfig returns production-safe defaults with environment variable overrides
@@ -110,6 +112,10 @@ func DefaultIVTConfig() *IVTConfig {
 
 		// IVT_REQUIRE_REFERER: Strict mode - require referer header (default: false)
 		RequireReferer: parseBool("IVT_REQUIRE_REFERER", false),
+
+		// GEOIP_DB_PATH: Path to MaxMind GeoIP2/GeoLite2 database file
+		// Example: "/usr/share/GeoIP/GeoLite2-Country.mmdb"
+		GeoIPDBPath: os.Getenv("GEOIP_DB_PATH"),
 	}
 
 	return config
@@ -137,11 +143,66 @@ type IVTResult struct {
 	DetectionTime time.Duration // Time taken to detect
 }
 
+// GeoIPLookup provides geographic location lookup for IP addresses
+type GeoIPLookup interface {
+	// LookupCountry returns the ISO country code for an IP address
+	LookupCountry(ip string) (string, error)
+	// Close releases resources
+	Close() error
+}
+
+// MaxMindGeoIP implements GeoIPLookup using MaxMind GeoIP2/GeoLite2 databases
+type MaxMindGeoIP struct {
+	reader *geoip2.Reader
+}
+
+// NewMaxMindGeoIP creates a new MaxMind GeoIP lookup instance
+func NewMaxMindGeoIP(dbPath string) (*MaxMindGeoIP, error) {
+	if dbPath == "" {
+		return nil, nil // GeoIP disabled
+	}
+
+	reader, err := geoip2.Open(dbPath)
+	if err != nil {
+		return nil, err
+	}
+
+	return &MaxMindGeoIP{reader: reader}, nil
+}
+
+// LookupCountry returns the ISO country code for an IP address
+func (g *MaxMindGeoIP) LookupCountry(ipStr string) (string, error) {
+	if g == nil || g.reader == nil {
+		return "", nil
+	}
+
+	ip := net.ParseIP(ipStr)
+	if ip == nil {
+		return "", nil // Invalid IP
+	}
+
+	record, err := g.reader.Country(ip)
+	if err != nil {
+		return "", err
+	}
+
+	return record.Country.IsoCode, nil
+}
+
+// Close releases GeoIP database resources
+func (g *MaxMindGeoIP) Close() error {
+	if g != nil && g.reader != nil {
+		return g.reader.Close()
+	}
+	return nil
+}
+
 // IVTDetector provides Invalid Traffic detection
 type IVTDetector struct {
 	config  *IVTConfig
 	mu      sync.RWMutex
 	metrics *IVTMetrics
+	geoip   GeoIPLookup // GeoIP lookup service (nil if disabled)
 
 	// Compiled regex patterns (cached for performance)
 	uaPatterns   []*regexp.Regexp
@@ -175,9 +236,22 @@ func NewIVTDetector(config *IVTConfig) *IVTDetector {
 		config = DefaultIVTConfig()
 	}
 
+	// Initialize GeoIP if database path is provided
+	var geoip GeoIPLookup
+	if config.GeoIPDBPath != "" {
+		maxmind, err := NewMaxMindGeoIP(config.GeoIPDBPath)
+		if err != nil {
+			log.Warn().Err(err).Str("path", config.GeoIPDBPath).Msg("Failed to initialize GeoIP database, geo checking disabled")
+		} else {
+			geoip = maxmind
+			log.Info().Str("path", config.GeoIPDBPath).Msg("GeoIP database loaded successfully")
+		}
+	}
+
 	return &IVTDetector{
 		config:  config,
 		metrics: &IVTMetrics{},
+		geoip:   geoip,
 	}
 }
 
@@ -317,42 +391,60 @@ func (d *IVTDetector) checkRefererWithConfig(r *http.Request, domain string, res
 }
 
 // checkGeoWithConfig validates geographic restrictions using snapshotted config
-//
-//nolint:unparam // result will be used when GeoIP lookup is implemented
 func (d *IVTDetector) checkGeoWithConfig(r *http.Request, result *IVTResult, cfg *IVTConfig) {
 	if !cfg.CheckGeo {
 		return
 	}
 
-	// Extract client IP for future GeoIP lookup
+	// Check if GeoIP is available
+	if d.geoip == nil {
+		return
+	}
+
+	// Extract client IP
 	clientIP := getClientIP(r)
 	if clientIP == "" {
 		return
 	}
 
-	// TODO: Implement GeoIP lookup
-	// This requires a GeoIP database (MaxMind, IP2Location, etc.)
-	// When implemented:
-	// country := geoip.Lookup(clientIP)
-	// if len(cfg.AllowedCountries) > 0 && !contains(cfg.AllowedCountries, country) {
-	//     result.Signals = append(result.Signals, IVTSignal{
-	//         Type:        "geo_restricted",
-	//         Severity:    "high",
-	//         Description: fmt.Sprintf("country %s not in allowed list", country),
-	//         DetectedAt:  time.Now(),
-	//     })
-	// }
-	// if len(cfg.BlockedCountries) > 0 && contains(cfg.BlockedCountries, country) {
-	//     result.Signals = append(result.Signals, IVTSignal{
-	//         Type:        "geo_blocked",
-	//         Severity:    "high",
-	//         Description: fmt.Sprintf("country %s is blocked", country),
-	//         DetectedAt:  time.Now(),
-	//     })
-	// }
+	// Lookup country code
+	country, err := d.geoip.LookupCountry(clientIP)
+	if err != nil {
+		log.Debug().Err(err).Str("ip", clientIP).Msg("GeoIP lookup failed")
+		return
+	}
 
-	_ = cfg.AllowedCountries
-	_ = cfg.BlockedCountries
+	if country == "" {
+		// No country found (private IP, unknown, etc.)
+		return
+	}
+
+	// Check allowed countries whitelist
+	if len(cfg.AllowedCountries) > 0 && !contains(cfg.AllowedCountries, country) {
+		result.Signals = append(result.Signals, IVTSignal{
+			Type:        "geo_restricted",
+			Severity:    "high",
+			Description: "country " + country + " not in allowed list",
+			DetectedAt:  time.Now(),
+		})
+		d.metrics.mu.Lock()
+		d.metrics.GeoMismatches++
+		d.metrics.mu.Unlock()
+		return
+	}
+
+	// Check blocked countries blacklist
+	if len(cfg.BlockedCountries) > 0 && contains(cfg.BlockedCountries, country) {
+		result.Signals = append(result.Signals, IVTSignal{
+			Type:        "geo_blocked",
+			Severity:    "high",
+			Description: "country " + country + " is blocked",
+			DetectedAt:  time.Now(),
+		})
+		d.metrics.mu.Lock()
+		d.metrics.GeoMismatches++
+		d.metrics.mu.Unlock()
+	}
 }
 
 // calculateScore computes IVT score from signals
@@ -495,4 +587,22 @@ func extractDomain(url string) string {
 	}
 
 	return url
+}
+
+// contains checks if a string slice contains a value
+func contains(slice []string, val string) bool {
+	for _, item := range slice {
+		if item == val {
+			return true
+		}
+	}
+	return false
+}
+
+// Close releases resources (GeoIP database)
+func (d *IVTDetector) Close() error {
+	if d.geoip != nil {
+		return d.geoip.Close()
+	}
+	return nil
 }
