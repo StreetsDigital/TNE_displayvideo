@@ -238,8 +238,10 @@ func TestDefaultAuthConfig(t *testing.T) {
 		t.Errorf("Expected default header name X-API-Key, got %s", config.HeaderName)
 	}
 
-	// Verify bypass paths
-	expectedBypass := []string{"/health", "/status", "/metrics", "/info/bidders", "/cookie_sync", "/setuid", "/optout", "/openrtb2/auction", "/admin/dashboard", "/admin/metrics"}
+	// Verify bypass paths - note: /openrtb2/auction is NOT in default list
+	// It's conditionally added at runtime in cmd/server/main.go based on
+	// whether PublisherAuth is enabled (see commit d61640d)
+	expectedBypass := []string{"/health", "/status", "/metrics", "/info/bidders", "/cookie_sync", "/setuid", "/optout", "/admin/dashboard", "/admin/metrics"}
 	if len(config.BypassPaths) != len(expectedBypass) {
 		t.Errorf("Expected %d bypass paths, got %d", len(expectedBypass), len(config.BypassPaths))
 	}
