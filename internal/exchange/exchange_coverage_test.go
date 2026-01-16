@@ -6,6 +6,7 @@ import (
 
 	"github.com/thenexusengine/tne_springwire/internal/adapters"
 	"github.com/thenexusengine/tne_springwire/internal/openrtb"
+	"github.com/thenexusengine/tne_springwire/pkg/idr"
 )
 
 // Mock publisher for testing bid multiplier extraction
@@ -248,3 +249,89 @@ func TestBuildBidExtension_VideoType(t *testing.T) {
 		t.Errorf("Expected media_type 'video', got '%s'", ext.Prebid.Meta.MediaType)
 	}
 }
+
+// TestSetMetrics tests setting metrics recorder
+func TestSetMetrics(t *testing.T) {
+	registry := adapters.NewRegistry()
+	exchange := New(registry, nil)
+
+	// Create mock metrics recorder
+	metrics := &mockMetricsRecorder{}
+
+	exchange.SetMetrics(metrics)
+
+	// Verify it was set by checking it's not nil (we can't access private field directly)
+	if exchange.metrics == nil {
+		t.Error("Expected metrics to be set")
+	}
+}
+
+// TestClose_WithEventRecorder tests Close with event recorder
+func TestClose_WithEventRecorder(t *testing.T) {
+	registry := adapters.NewRegistry()
+
+	// Create real event recorder with empty URL (will work for Close)
+	eventRecorder := idr.NewEventRecorder("", 10)
+
+	exchange := New(registry, nil)
+	exchange.eventRecorder = eventRecorder
+
+	err := exchange.Close()
+	if err != nil {
+		t.Errorf("Expected no error, got %v", err)
+	}
+}
+
+// TestClose_NoEventRecorder tests Close without event recorder
+func TestClose_NoEventRecorder(t *testing.T) {
+	registry := adapters.NewRegistry()
+	exchange := New(registry, nil)
+	exchange.eventRecorder = nil
+
+	err := exchange.Close()
+	if err != nil {
+		t.Errorf("Expected no error, got %v", err)
+	}
+}
+
+// TestBuildImpFloorMap_MultipleImpressions tests floor map with multiple impressions
+func TestBuildImpFloorMap_MultipleImpressions(t *testing.T) {
+	registry := adapters.NewRegistry()
+	exchange := New(registry, nil)
+
+	req := &openrtb.BidRequest{
+		ID: "test-request",
+		Imp: []openrtb.Imp{
+			{ID: "imp1", BidFloor: 1.0},
+			{ID: "imp2", BidFloor: 2.5},
+			{ID: "imp3", BidFloor: 0.5},
+		},
+	}
+
+	ctx := context.Background()
+	floorMap := exchange.buildImpFloorMap(ctx, req)
+
+	// Should have all impression IDs in the map
+	if len(floorMap) != 3 {
+		t.Errorf("Expected 3 floors in map, got %d", len(floorMap))
+	}
+
+	// Should preserve original floors when no multiplier
+	if floorMap["imp1"] != 1.0 {
+		t.Errorf("Expected floor 1.0 for imp1, got %f", floorMap["imp1"])
+	}
+	if floorMap["imp2"] != 2.5 {
+		t.Errorf("Expected floor 2.5 for imp2, got %f", floorMap["imp2"])
+	}
+	if floorMap["imp3"] != 0.5 {
+		t.Errorf("Expected floor 0.5 for imp3, got %f", floorMap["imp3"])
+	}
+}
+
+// Mock implementations for testing
+
+type mockMetricsRecorder struct{}
+
+func (m *mockMetricsRecorder) RecordMargin(publisher, bidder, mediaType string, originalPrice, adjustedPrice, platformCut float64) {
+}
+func (m *mockMetricsRecorder) RecordFloorAdjustment(publisher string) {}

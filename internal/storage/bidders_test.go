@@ -516,3 +516,491 @@ func createTestBidder(code string) *Bidder {
 
 	return bidder
 }
+
+// TestBidderStore_List_Success tests listing all bidders
+func TestBidderStore_List_Success(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("Failed to create mock DB: %v", err)
+	}
+	defer db.Close()
+
+	store := NewBidderStore(db)
+	ctx := context.Background()
+
+	bidder1 := createTestBidder("appnexus")
+	bidder2 := createTestBidder("rubicon")
+
+	httpHeadersJSON1, _ := json.Marshal(bidder1.HTTPHeaders)
+	httpHeadersJSON2, _ := json.Marshal(bidder2.HTTPHeaders)
+
+	rows := sqlmock.NewRows([]string{
+		"id", "bidder_code", "bidder_name", "endpoint_url", "timeout_ms",
+		"enabled", "status", "supports_banner", "supports_video", "supports_native", "supports_audio",
+		"gvl_vendor_id", "http_headers", "description", "documentation_url", "contact_email",
+		"created_at", "updated_at",
+	}).
+		AddRow(bidder1.ID, bidder1.BidderCode, bidder1.BidderName, bidder1.EndpointURL, bidder1.TimeoutMs,
+			bidder1.Enabled, bidder1.Status, bidder1.SupportsBanner, bidder1.SupportsVideo, bidder1.SupportsNative, bidder1.SupportsAudio,
+			bidder1.GVLVendorID, httpHeadersJSON1, bidder1.Description, bidder1.DocumentationURL, bidder1.ContactEmail,
+			bidder1.CreatedAt, bidder1.UpdatedAt).
+		AddRow(bidder2.ID, bidder2.BidderCode, bidder2.BidderName, bidder2.EndpointURL, bidder2.TimeoutMs,
+			bidder2.Enabled, bidder2.Status, bidder2.SupportsBanner, bidder2.SupportsVideo, bidder2.SupportsNative, bidder2.SupportsAudio,
+			bidder2.GVLVendorID, httpHeadersJSON2, bidder2.Description, bidder2.DocumentationURL, bidder2.ContactEmail,
+			bidder2.CreatedAt, bidder2.UpdatedAt)
+
+	mock.ExpectQuery("SELECT (.+) FROM bidders ORDER BY bidder_code").
+		WillReturnRows(rows)
+
+	bidders, err := store.List(ctx)
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+
+	if len(bidders) != 2 {
+		t.Errorf("Expected 2 bidders, got %d", len(bidders))
+	}
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("Unfulfilled expectations: %v", err)
+	}
+}
+
+// TestBidderStore_List_Empty tests listing with no bidders
+func TestBidderStore_List_Empty(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("Failed to create mock DB: %v", err)
+	}
+	defer db.Close()
+
+	store := NewBidderStore(db)
+	ctx := context.Background()
+
+	rows := sqlmock.NewRows([]string{
+		"id", "bidder_code", "bidder_name", "endpoint_url", "timeout_ms",
+		"enabled", "status", "supports_banner", "supports_video", "supports_native", "supports_audio",
+		"gvl_vendor_id", "http_headers", "description", "documentation_url", "contact_email",
+		"created_at", "updated_at",
+	})
+
+	mock.ExpectQuery("SELECT (.+) FROM bidders ORDER BY bidder_code").
+		WillReturnRows(rows)
+
+	bidders, err := store.List(ctx)
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+
+	if len(bidders) != 0 {
+		t.Errorf("Expected 0 bidders, got %d", len(bidders))
+	}
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("Unfulfilled expectations: %v", err)
+	}
+}
+
+// TestBidderStore_List_QueryError tests list with query error
+func TestBidderStore_List_QueryError(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("Failed to create mock DB: %v", err)
+	}
+	defer db.Close()
+
+	store := NewBidderStore(db)
+	ctx := context.Background()
+
+	mock.ExpectQuery("SELECT (.+) FROM bidders ORDER BY bidder_code").
+		WillReturnError(sql.ErrConnDone)
+
+	_, err = store.List(ctx)
+	if err == nil {
+		t.Error("Expected error, got nil")
+	}
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("Unfulfilled expectations: %v", err)
+	}
+}
+
+// TestBidderStore_Create_Success tests creating a bidder
+func TestBidderStore_Create_Success(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("Failed to create mock DB: %v", err)
+	}
+	defer db.Close()
+
+	store := NewBidderStore(db)
+	ctx := context.Background()
+
+	bidder := createTestBidder("newbidder")
+	bidder.ID = "" // ID should be assigned by DB
+
+	now := time.Now()
+	rows := sqlmock.NewRows([]string{"id", "created_at", "updated_at"}).
+		AddRow("123", now, now)
+
+	mock.ExpectQuery("INSERT INTO bidders").
+		WithArgs(
+			bidder.BidderCode, bidder.BidderName, bidder.EndpointURL, bidder.TimeoutMs,
+			bidder.Enabled, bidder.Status, bidder.SupportsBanner, bidder.SupportsVideo,
+			bidder.SupportsNative, bidder.SupportsAudio, bidder.GVLVendorID,
+			sqlmock.AnyArg(), // http_headers JSON
+			bidder.Description, bidder.DocumentationURL, bidder.ContactEmail,
+		).
+		WillReturnRows(rows)
+
+	err = store.Create(ctx, bidder)
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+
+	if bidder.ID != "123" {
+		t.Errorf("Expected ID '123', got '%s'", bidder.ID)
+	}
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("Unfulfilled expectations: %v", err)
+	}
+}
+
+// TestBidderStore_Create_Error tests create with database error
+func TestBidderStore_Create_Error(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("Failed to create mock DB: %v", err)
+	}
+	defer db.Close()
+
+	store := NewBidderStore(db)
+	ctx := context.Background()
+
+	bidder := createTestBidder("newbidder")
+
+	mock.ExpectQuery("INSERT INTO bidders").
+		WillReturnError(sql.ErrConnDone)
+
+	err = store.Create(ctx, bidder)
+	if err == nil {
+		t.Error("Expected error, got nil")
+	}
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("Unfulfilled expectations: %v", err)
+	}
+}
+
+// TestBidderStore_Update_Success tests updating a bidder
+func TestBidderStore_Update_Success(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("Failed to create mock DB: %v", err)
+	}
+	defer db.Close()
+
+	store := NewBidderStore(db)
+	ctx := context.Background()
+
+	bidder := createTestBidder("appnexus")
+	bidder.BidderName = "Updated Name"
+	bidder.TimeoutMs = 2000
+
+	mock.ExpectExec("UPDATE bidders").
+		WithArgs(
+			bidder.BidderName, bidder.EndpointURL, bidder.TimeoutMs,
+			bidder.Enabled, bidder.Status, bidder.SupportsBanner, bidder.SupportsVideo,
+			bidder.SupportsNative, bidder.SupportsAudio, bidder.GVLVendorID,
+			sqlmock.AnyArg(), // http_headers JSON
+			bidder.Description, bidder.DocumentationURL, bidder.ContactEmail,
+			bidder.BidderCode,
+		).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+
+	err = store.Update(ctx, bidder)
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("Unfulfilled expectations: %v", err)
+	}
+}
+
+// TestBidderStore_Update_NotFound tests updating non-existent bidder
+func TestBidderStore_Update_NotFound(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("Failed to create mock DB: %v", err)
+	}
+	defer db.Close()
+
+	store := NewBidderStore(db)
+	ctx := context.Background()
+
+	bidder := createTestBidder("nonexistent")
+
+	mock.ExpectExec("UPDATE bidders").
+		WillReturnResult(sqlmock.NewResult(0, 0))
+
+	err = store.Update(ctx, bidder)
+	if err == nil {
+		t.Error("Expected error for non-existent bidder, got nil")
+	}
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("Unfulfilled expectations: %v", err)
+	}
+}
+
+// TestBidderStore_Delete_Success tests soft-deleting a bidder
+func TestBidderStore_Delete_Success(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("Failed to create mock DB: %v", err)
+	}
+	defer db.Close()
+
+	store := NewBidderStore(db)
+	ctx := context.Background()
+
+	mock.ExpectExec("UPDATE bidders SET status = 'archived', enabled = false WHERE bidder_code").
+		WithArgs("appnexus").
+		WillReturnResult(sqlmock.NewResult(0, 1))
+
+	err = store.Delete(ctx, "appnexus")
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("Unfulfilled expectations: %v", err)
+	}
+}
+
+// TestBidderStore_Delete_NotFound tests deleting non-existent bidder
+func TestBidderStore_Delete_NotFound(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("Failed to create mock DB: %v", err)
+	}
+	defer db.Close()
+
+	store := NewBidderStore(db)
+	ctx := context.Background()
+
+	mock.ExpectExec("UPDATE bidders SET status = 'archived', enabled = false WHERE bidder_code").
+		WithArgs("nonexistent").
+		WillReturnResult(sqlmock.NewResult(0, 0))
+
+	err = store.Delete(ctx, "nonexistent")
+	if err == nil {
+		t.Error("Expected error for non-existent bidder, got nil")
+	}
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("Unfulfilled expectations: %v", err)
+	}
+}
+
+// TestBidderStore_SetEnabled_Success tests enabling a bidder
+func TestBidderStore_SetEnabled_Success(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("Failed to create mock DB: %v", err)
+	}
+	defer db.Close()
+
+	store := NewBidderStore(db)
+	ctx := context.Background()
+
+	mock.ExpectExec("UPDATE bidders SET enabled = (.+) WHERE bidder_code").
+		WithArgs(true, "appnexus").
+		WillReturnResult(sqlmock.NewResult(0, 1))
+
+	err = store.SetEnabled(ctx, "appnexus", true)
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("Unfulfilled expectations: %v", err)
+	}
+}
+
+// TestBidderStore_SetEnabled_Disable tests disabling a bidder
+func TestBidderStore_SetEnabled_Disable(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("Failed to create mock DB: %v", err)
+	}
+	defer db.Close()
+
+	store := NewBidderStore(db)
+	ctx := context.Background()
+
+	mock.ExpectExec("UPDATE bidders SET enabled = (.+) WHERE bidder_code").
+		WithArgs(false, "rubicon").
+		WillReturnResult(sqlmock.NewResult(0, 1))
+
+	err = store.SetEnabled(ctx, "rubicon", false)
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("Unfulfilled expectations: %v", err)
+	}
+}
+
+// TestBidderStore_SetEnabled_NotFound tests setting enabled on non-existent bidder
+func TestBidderStore_SetEnabled_NotFound(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("Failed to create mock DB: %v", err)
+	}
+	defer db.Close()
+
+	store := NewBidderStore(db)
+	ctx := context.Background()
+
+	mock.ExpectExec("UPDATE bidders SET enabled = (.+) WHERE bidder_code").
+		WithArgs(true, "nonexistent").
+		WillReturnResult(sqlmock.NewResult(0, 0))
+
+	err = store.SetEnabled(ctx, "nonexistent", true)
+	if err == nil {
+		t.Error("Expected error for non-existent bidder, got nil")
+	}
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("Unfulfilled expectations: %v", err)
+	}
+}
+
+// TestBidderStore_GetCapabilities_Banner tests getting bidders by banner capability
+func TestBidderStore_GetCapabilities_Banner(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("Failed to create mock DB: %v", err)
+	}
+	defer db.Close()
+
+	store := NewBidderStore(db)
+	ctx := context.Background()
+
+	bidder := createTestBidder("appnexus")
+	httpHeadersJSON, _ := json.Marshal(bidder.HTTPHeaders)
+
+	rows := sqlmock.NewRows([]string{
+		"id", "bidder_code", "bidder_name", "endpoint_url", "timeout_ms",
+		"enabled", "status", "supports_banner", "supports_video", "supports_native", "supports_audio",
+		"gvl_vendor_id", "http_headers", "description", "documentation_url", "contact_email",
+		"created_at", "updated_at",
+	}).AddRow(
+		bidder.ID, bidder.BidderCode, bidder.BidderName, bidder.EndpointURL, bidder.TimeoutMs,
+		bidder.Enabled, bidder.Status, bidder.SupportsBanner, bidder.SupportsVideo, bidder.SupportsNative, bidder.SupportsAudio,
+		bidder.GVLVendorID, httpHeadersJSON, bidder.Description, bidder.DocumentationURL, bidder.ContactEmail,
+		bidder.CreatedAt, bidder.UpdatedAt,
+	)
+
+	mock.ExpectQuery("SELECT (.+) FROM bidders WHERE enabled = true AND status = 'active'").
+		WithArgs(true, false, false, false). // banner=true, others=false
+		WillReturnRows(rows)
+
+	bidders, err := store.GetCapabilities(ctx, true, false, false, false)
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+
+	if len(bidders) != 1 {
+		t.Errorf("Expected 1 bidder, got %d", len(bidders))
+	}
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("Unfulfilled expectations: %v", err)
+	}
+}
+
+// TestBidderStore_GetCapabilities_MultipleFormats tests getting bidders by multiple capabilities
+func TestBidderStore_GetCapabilities_MultipleFormats(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("Failed to create mock DB: %v", err)
+	}
+	defer db.Close()
+
+	store := NewBidderStore(db)
+	ctx := context.Background()
+
+	rows := sqlmock.NewRows([]string{
+		"id", "bidder_code", "bidder_name", "endpoint_url", "timeout_ms",
+		"enabled", "status", "supports_banner", "supports_video", "supports_native", "supports_audio",
+		"gvl_vendor_id", "http_headers", "description", "documentation_url", "contact_email",
+		"created_at", "updated_at",
+	})
+
+	mock.ExpectQuery("SELECT (.+) FROM bidders WHERE enabled = true AND status = 'active'").
+		WithArgs(true, true, false, false). // banner=true, video=true
+		WillReturnRows(rows)
+
+	bidders, err := store.GetCapabilities(ctx, true, true, false, false)
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+
+	if len(bidders) != 0 {
+		t.Errorf("Expected 0 bidders, got %d", len(bidders))
+	}
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("Unfulfilled expectations: %v", err)
+	}
+}
+
+// TestBidderStore_GetCapabilities_AllFormats tests getting bidders supporting all formats
+func TestBidderStore_GetCapabilities_AllFormats(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("Failed to create mock DB: %v", err)
+	}
+	defer db.Close()
+
+	store := NewBidderStore(db)
+	ctx := context.Background()
+
+	bidder := createTestBidder("appnexus")
+	bidder.SupportsAudio = true
+	httpHeadersJSON, _ := json.Marshal(bidder.HTTPHeaders)
+
+	rows := sqlmock.NewRows([]string{
+		"id", "bidder_code", "bidder_name", "endpoint_url", "timeout_ms",
+		"enabled", "status", "supports_banner", "supports_video", "supports_native", "supports_audio",
+		"gvl_vendor_id", "http_headers", "description", "documentation_url", "contact_email",
+		"created_at", "updated_at",
+	}).AddRow(
+		bidder.ID, bidder.BidderCode, bidder.BidderName, bidder.EndpointURL, bidder.TimeoutMs,
+		bidder.Enabled, bidder.Status, bidder.SupportsBanner, bidder.SupportsVideo, bidder.SupportsNative, bidder.SupportsAudio,
+		bidder.GVLVendorID, httpHeadersJSON, bidder.Description, bidder.DocumentationURL, bidder.ContactEmail,
+		bidder.CreatedAt, bidder.UpdatedAt,
+	)
+
+	mock.ExpectQuery("SELECT (.+) FROM bidders WHERE enabled = true AND status = 'active'").
+		WithArgs(true, true, true, true). // all formats
+		WillReturnRows(rows)
+
+	bidders, err := store.GetCapabilities(ctx, true, true, true, true)
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+
+	if len(bidders) != 1 {
+		t.Errorf("Expected 1 bidder, got %d", len(bidders))
+	}
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("Unfulfilled expectations: %v", err)
+	}
+}
