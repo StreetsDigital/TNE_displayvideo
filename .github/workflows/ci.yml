@@ -7,7 +7,7 @@ on:
     branches: [main, master, develop]
 
 env:
-  GO_VERSION: '1.23'
+  GO_BOOTSTRAP_VERSION: 'stable'
 
 jobs:
   build:
@@ -15,19 +15,24 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
 
       - name: Set up Go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@v5
         with:
-          go-version: ${{ env.GO_VERSION }}
+          go-version: ${{ env.GO_BOOTSTRAP_VERSION }}
           cache: true
 
+      - name: Install Go tip
+        run: |
+          go install golang.org/dl/gotip@latest
+          gotip download
+
       - name: Download dependencies
-        run: go mod download
+        run: gotip mod download
 
       - name: Build
-        run: go build -v ./...
+        run: gotip build -v ./...
 
   test:
     name: Test
@@ -35,16 +40,21 @@ jobs:
     needs: build
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
 
       - name: Set up Go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@v5
         with:
-          go-version: ${{ env.GO_VERSION }}
+          go-version: ${{ env.GO_BOOTSTRAP_VERSION }}
           cache: true
 
+      - name: Install Go tip
+        run: |
+          go install golang.org/dl/gotip@latest
+          gotip download
+
       - name: Run tests
-        run: go test -v -race -coverprofile=coverage.out -covermode=atomic ./...
+        run: gotip test -v -race -coverprofile=coverage.out -covermode=atomic ./...
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v5
@@ -57,10 +67,10 @@ jobs:
 
       - name: Generate coverage report
         run: |
-          go tool cover -func=coverage.out | tail -1
+          gotip tool cover -func=coverage.out | tail -1
           echo "## Test Coverage" >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
-          go tool cover -func=coverage.out >> $GITHUB_STEP_SUMMARY
+          gotip tool cover -func=coverage.out >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
 
   lint:
@@ -68,16 +78,21 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
 
       - name: Set up Go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@v5
         with:
-          go-version: ${{ env.GO_VERSION }}
+          go-version: ${{ env.GO_BOOTSTRAP_VERSION }}
           cache: true
 
+      - name: Install Go tip
+        run: |
+          go install golang.org/dl/gotip@latest
+          gotip download
+
       - name: Run go vet
-        run: go vet ./...
+        run: gotip vet ./...
 
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@v6
@@ -90,12 +105,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
 
       - name: Set up Go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@v5
         with:
-          go-version: ${{ env.GO_VERSION }}
+          go-version: ${{ env.GO_BOOTSTRAP_VERSION }}
           cache: true
 
       - name: Run Gosec Security Scanner
@@ -115,7 +130,7 @@ jobs:
     needs: [build, test, lint]
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
