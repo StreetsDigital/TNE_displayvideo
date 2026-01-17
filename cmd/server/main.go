@@ -243,15 +243,21 @@ func main() {
 	// Admin endpoints for runtime configuration
 	mux.HandleFunc("/admin/circuit-breaker", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
+
+		response := make(map[string]interface{})
+
+		// Include IDR circuit breaker stats
 		if ex.GetIDRClient() != nil {
-			stats := ex.GetIDRClient().CircuitBreakerStats()
-			if err := json.NewEncoder(w).Encode(stats); err != nil {
-				log.Error().Err(err).Msg("failed to encode circuit breaker stats")
-			}
+			response["idr"] = ex.GetIDRClient().CircuitBreakerStats()
 		} else {
-			if err := json.NewEncoder(w).Encode(map[string]string{"status": "IDR disabled"}); err != nil {
-				log.Error().Err(err).Msg("failed to encode IDR disabled status")
-			}
+			response["idr"] = map[string]string{"status": "disabled"}
+		}
+
+		// Include bidder circuit breaker stats
+		response["bidders"] = ex.GetBidderCircuitBreakerStats()
+
+		if err := json.NewEncoder(w).Encode(response); err != nil {
+			log.Error().Err(err).Msg("failed to encode circuit breaker stats")
 		}
 	})
 

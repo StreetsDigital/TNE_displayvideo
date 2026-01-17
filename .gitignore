@@ -21,6 +21,10 @@ deployment/docker-compose.override.yml
 
 # Go build artifacts
 catalyst
+catalyst-server
+server
+main
+test-build
 *.exe
 *.exe~
 *.dll

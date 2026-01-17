@@ -247,3 +247,19 @@ func (cb *CircuitBreaker) IsOpen() bool {
 func (cb *CircuitBreaker) Close() {
 	cb.callbackWg.Wait()
 }
+
+// RecordFailure records a failure without executing a function
+// Useful for external failure tracking (e.g., timeouts, errors from async calls)
+func (cb *CircuitBreaker) RecordFailure() {
+	cb.mu.Lock()
+	defer cb.mu.Unlock()
+	cb.recordFailure()
+}
+
+// RecordSuccess records a success without executing a function
+// Useful for external success tracking (e.g., successful async calls)
+func (cb *CircuitBreaker) RecordSuccess() {
+	cb.mu.Lock()
+	defer cb.mu.Unlock()
+	cb.recordSuccess()
+}

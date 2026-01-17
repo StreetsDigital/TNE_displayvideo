@@ -360,3 +360,172 @@ func TestIsOpen(t *testing.T) {
 		t.Error("expected circuit to be open after failure")
 	}
 }
+
+func TestRecordFailure_Direct(t *testing.T) {
+	cb := NewCircuitBreaker(&CircuitBreakerConfig{
+		FailureThreshold: 3,
+		SuccessThreshold: 2,
+		Timeout:          time.Second,
+	})
+
+	// Record initial stats
+	initialStats := cb.Stats()
+	if initialStats.TotalFailures != 0 {
+		t.Errorf("expected 0 initial failures, got %d", initialStats.TotalFailures)
+	}
+
+	// Record failures directly (without Execute)
+	cb.RecordFailure()
+	cb.RecordFailure()
+
+	// Check stats after 2 failures
+	stats := cb.Stats()
+	if stats.TotalFailures != 2 {
+		t.Errorf("expected 2 failures, got %d", stats.TotalFailures)
+	}
+	if stats.Failures != 2 {
+		t.Errorf("expected 2 consecutive failures, got %d", stats.Failures)
+	}
+	if cb.State() != StateClosed {
+		t.Errorf("expected state to remain closed after 2 failures (threshold is 3), got %s", cb.State())
+	}
+
+	// Record one more failure to open circuit
+	cb.RecordFailure()
+
+	// Circuit should now be open
+	if cb.State() != StateOpen {
+		t.Errorf("expected circuit to be open after 3 failures, got %s", cb.State())
+	}
+
+	finalStats := cb.Stats()
+	if finalStats.TotalFailures != 3 {
+		t.Errorf("expected 3 total failures, got %d", finalStats.TotalFailures)
+	}
+}
+
+func TestRecordSuccess_Direct(t *testing.T) {
+	cb := NewCircuitBreaker(&CircuitBreakerConfig{
+		FailureThreshold: 2,
+		SuccessThreshold: 2,
+		Timeout:          time.Second,
+	})
+
+	// Record initial stats
+	initialStats := cb.Stats()
+	if initialStats.TotalSuccesses != 0 {
+		t.Errorf("expected 0 initial successes, got %d", initialStats.TotalSuccesses)
+	}
+
+	// Record successes directly (without Execute)
+	cb.RecordSuccess()
+	cb.RecordSuccess()
+	cb.RecordSuccess()
+
+	// Check stats
+	stats := cb.Stats()
+	if stats.TotalSuccesses != 3 {
+		t.Errorf("expected 3 successes, got %d", stats.TotalSuccesses)
+	}
+	if cb.State() != StateClosed {
+		t.Errorf("expected state to remain closed, got %s", cb.State())
+	}
+}
+
+func TestRecordSuccess_ResetsFailureCount(t *testing.T) {
+	cb := NewCircuitBreaker(&CircuitBreakerConfig{
+		FailureThreshold: 3,
+		SuccessThreshold: 2,
+		Timeout:          time.Second,
+	})
+
+	// Record some failures (not enough to open)
+	cb.RecordFailure()
+	cb.RecordFailure()
+
+	stats := cb.Stats()
+	if stats.Failures != 2 {
+		t.Errorf("expected 2 failures, got %d", stats.Failures)
+	}
+
+	// Record a success - should reset failure count
+	cb.RecordSuccess()
+
+	stats = cb.Stats()
+	if stats.Failures != 0 {
+		t.Errorf("expected failure count to reset to 0 after success, got %d", stats.Failures)
+	}
+	if cb.State() != StateClosed {
+		t.Errorf("expected circuit to remain closed, got %s", cb.State())
+	}
+}
+
+func TestRecordFailure_WithSuccessesInBetween(t *testing.T) {
+	cb := NewCircuitBreaker(&CircuitBreakerConfig{
+		FailureThreshold: 3,
+		SuccessThreshold: 2,
+		Timeout:          time.Second,
+	})
+
+	// Record failures and successes alternating
+	cb.RecordFailure()
+	cb.RecordSuccess() // Resets failure count
+	cb.RecordFailure()
+	cb.RecordSuccess() // Resets failure count
+	cb.RecordFailure()
+
+	// Should still be closed because successes reset failure count
+	if cb.State() != StateClosed {
+		t.Errorf("expected circuit to remain closed, got %s", cb.State())
+	}
+
+	stats := cb.Stats()
+	if stats.TotalFailures != 3 {
+		t.Errorf("expected 3 total failures, got %d", stats.TotalFailures)
+	}
+	if stats.TotalSuccesses != 2 {
+		t.Errorf("expected 2 total successes, got %d", stats.TotalSuccesses)
+	}
+	if stats.Failures != 1 {
+		t.Errorf("expected 1 current consecutive failure, got %d", stats.Failures)
+	}
+}
+
+func TestRecordFailureSuccess_ConcurrentAccess(t *testing.T) {
+	cb := NewCircuitBreaker(&CircuitBreakerConfig{
+		FailureThreshold: 100,
+		SuccessThreshold: 2,
+		Timeout:          time.Second,
+	})
+
+	var wg sync.WaitGroup
+
+	// Run 50 concurrent RecordSuccess and 50 concurrent RecordFailure
+	for i := 0; i < 50; i++ {
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			cb.RecordSuccess()
+		}()
+		go func() {
+			defer wg.Done()
+			cb.RecordFailure()
+		}()
+	}
+
+	wg.Wait()
+
+	// Verify counts are correct
+	stats := cb.Stats()
+	if stats.TotalSuccesses != 50 {
+		t.Errorf("expected 50 successes, got %d", stats.TotalSuccesses)
+	}
+	if stats.TotalFailures != 50 {
+		t.Errorf("expected 50 failures, got %d", stats.TotalFailures)
+	}
+
+	// Circuit should still be closed (failures < threshold)
+	if cb.State() != StateClosed {
+		t.Errorf("expected circuit to remain closed, got %s", cb.State())
+	}
+}

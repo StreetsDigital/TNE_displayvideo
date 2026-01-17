@@ -100,6 +100,10 @@ type PublisherAuth struct {
 	rateLimits   map[string]*rateLimitEntry
 	rateLimitsMu sync.RWMutex
 
+	// In-memory fallback cache (for Redis/PostgreSQL failures)
+	publisherCache   map[string]*publisherCacheEntry
+	publisherCacheMu sync.RWMutex
+
 	// IVT detection
 	ivtDetector *IVTDetector
 }
@@ -107,6 +111,12 @@ type PublisherAuth struct {
 type rateLimitEntry struct {
 	tokens    float64
 	lastCheck time.Time
+}
+
+// publisherCacheEntry represents a cached publisher record
+type publisherCacheEntry struct {
+	allowedDomains string
+	expiresAt      time.Time
 }
 
 // Redis key for registered publishers
@@ -277,7 +287,7 @@ func (p *PublisherAuth) extractPublisherInfo(req *minimalBidRequest) (publisherI
 }
 
 // validatePublisher validates the publisher ID and domain
-// Checks in order: PostgreSQL database, Redis, in-memory RegisteredPubs
+// Fallback chain: Redis → PostgreSQL → Memory cache → RegisteredPubs
 func (p *PublisherAuth) validatePublisher(ctx context.Context, publisherID, domain string) error {
 	p.mu.RLock()
 	allowUnregistered := p.config.AllowUnregistered
@@ -296,78 +306,80 @@ func (p *PublisherAuth) validatePublisher(ctx context.Context, publisherID, doma
 		return &PublisherAuthError{Code: "missing_publisher", Message: "publisher ID required"}
 	}
 
-	// 1. Check PostgreSQL database (primary source of truth if configured)
-	if publisherStore != nil {
-		pub, err := publisherStore.GetByPublisherID(ctx, publisherID)
-		if err != nil {
-			return &PublisherAuthError{
-				Code:    "database_error",
-				Message: "failed to query publisher",
-				Cause:   err,
-			}
-		}
-
-		// Publisher not found in database
-		if pub == nil {
-			if allowUnregistered {
-				return nil
-			}
-			return &PublisherAuthError{Code: "unknown_publisher", Message: "publisher not registered"}
-		}
-
-		// Extract allowed domains from publisher record
-		// The pub interface{} is expected to have an AllowedDomains string field
-		type domainProvider interface {
-			GetAllowedDomains() string
-		}
-
-		var allowedDomains string
-		if dp, ok := pub.(domainProvider); ok {
-			allowedDomains = dp.GetAllowedDomains()
-		} else {
-			// Try type assertion to map for flexibility
-			if pubMap, ok := pub.(map[string]interface{}); ok {
-				if ad, ok := pubMap["allowed_domains"].(string); ok {
-					allowedDomains = ad
-				}
-			}
-		}
-
-		// Validate domain if required
-		if validateDomain && allowedDomains != "" && allowedDomains != "*" {
-			if !p.domainMatches(domain, allowedDomains) {
-				return &PublisherAuthError{Code: "domain_mismatch", Message: "domain not allowed for publisher"}
-			}
-		}
-
-		return nil
-	}
-
-	// 2. Check Redis (secondary source if configured)
+	// 1. Try Redis FIRST (fastest if configured)
 	if useRedis && redisClient != nil {
 		allowedDomains, err := redisClient.HGet(ctx, RedisPublishersHash, publisherID)
-		if err != nil {
-			// Redis error - log but continue to fallback
-			log.Warn().Err(err).Str("publisher_id", publisherID).Msg("Redis lookup failed, falling back")
-		} else if allowedDomains != "" {
-			// Publisher found in Redis
-			// Validate domain if required
-			if validateDomain && allowedDomains != "*" {
+		if err == nil && allowedDomains != "" {
+			// Publisher found in Redis - validate domain and return
+			if validateDomain && allowedDomains != "" && allowedDomains != "*" {
 				if !p.domainMatches(domain, allowedDomains) {
 					return &PublisherAuthError{Code: "domain_mismatch", Message: "domain not allowed for publisher"}
 				}
 			}
 			return nil
 		}
-		// Publisher not found in Redis, continue to fallback
+		// Redis error or not found - log and fall through to PostgreSQL
+		if err != nil {
+			p.logRedisFallback(err, publisherID)
+		}
+		// Continue to PostgreSQL fallback
 	}
 
-	// 3. Check in-memory RegisteredPubs (fallback for simple deployments and testing)
+	// 2. Fall back to PostgreSQL database
+	if publisherStore != nil {
+		pub, err := publisherStore.GetByPublisherID(ctx, publisherID)
+		if err == nil && pub != nil {
+			// Publisher found in PostgreSQL - extract allowed domains
+			type domainProvider interface {
+				GetAllowedDomains() string
+			}
+
+			var allowedDomains string
+			if dp, ok := pub.(domainProvider); ok {
+				allowedDomains = dp.GetAllowedDomains()
+			} else {
+				// Try type assertion to map for flexibility
+				if pubMap, ok := pub.(map[string]interface{}); ok {
+					if ad, ok := pubMap["allowed_domains"].(string); ok {
+						allowedDomains = ad
+					}
+				}
+			}
+
+			// Cache result in memory for 30s
+			p.cachePublisher(publisherID, allowedDomains, 30*time.Second)
+
+			// Validate domain if required
+			if validateDomain && allowedDomains != "" && allowedDomains != "*" {
+				if !p.domainMatches(domain, allowedDomains) {
+					return &PublisherAuthError{Code: "domain_mismatch", Message: "domain not allowed for publisher"}
+				}
+			}
+			return nil
+		}
+		// PostgreSQL error or not found - log and fall through to memory cache
+		if err != nil {
+			p.logDatabaseFallback(err, publisherID)
+		}
+		// Continue to memory cache fallback
+	}
+
+	// 3. Fall back to in-memory cache (30s TTL from previous PostgreSQL success)
+	if allowedDomains := p.getCachedPublisher(publisherID); allowedDomains != "" {
+		// Publisher found in cache - validate domain and return
+		if validateDomain && allowedDomains != "" && allowedDomains != "*" {
+			if !p.domainMatches(domain, allowedDomains) {
+				return &PublisherAuthError{Code: "domain_mismatch", Message: "domain not allowed for publisher"}
+			}
+		}
+		return nil
+	}
+
+	// 4. Check in-memory RegisteredPubs (for development/testing)
 	if len(registeredPubs) > 0 {
 		allowedDomains, exists := registeredPubs[publisherID]
 		if exists {
-			// Publisher found in memory
-			// Validate domain if required
+			// Publisher found in RegisteredPubs - validate domain and return
 			if validateDomain && allowedDomains != "" && allowedDomains != "*" {
 				if !p.domainMatches(domain, allowedDomains) {
 					return &PublisherAuthError{Code: "domain_mismatch", Message: "domain not allowed for publisher"}
@@ -381,14 +393,14 @@ func (p *PublisherAuth) validatePublisher(ctx context.Context, publisherID, doma
 		}
 	}
 
-	// No validation source configured
+	// 5. All fallbacks exhausted - check if unregistered publishers are allowed
 	if allowUnregistered {
 		return nil
 	}
 
 	return &PublisherAuthError{
-		Code:    "system_error",
-		Message: "publisher database not configured",
+		Code:    "unknown_publisher",
+		Message: "publisher not registered in any data source",
 	}
 }
 
@@ -470,6 +482,91 @@ func (p *PublisherAuth) cleanupStaleRateLimits(now time.Time) {
 	for pubID, entry := range p.rateLimits {
 		if entry.lastCheck.Before(staleThreshold) {
 			delete(p.rateLimits, pubID)
+		}
+	}
+}
+
+// Rate-limited logging state (shared across all PublisherAuth instances)
+var (
+	lastRedisWarning sync.Map // string -> time.Time
+	lastDBWarning    sync.Map // string -> time.Time
+)
+
+// logRedisFallback logs Redis fallback with rate limiting (max 1 log per minute)
+func (p *PublisherAuth) logRedisFallback(err error, pubID string) {
+	key := "redis"
+	if last, ok := lastRedisWarning.Load(key); ok {
+		if time.Since(last.(time.Time)) < 1*time.Minute {
+			return // Skip duplicate log
+		}
+	}
+	lastRedisWarning.Store(key, time.Now())
+
+	log.Warn().
+		Err(err).
+		Str("publisher_id", pubID).
+		Msg("Redis unavailable, falling back to PostgreSQL")
+}
+
+// logDatabaseFallback logs database fallback with rate limiting (max 1 log per minute)
+func (p *PublisherAuth) logDatabaseFallback(err error, pubID string) {
+	key := "database"
+	if last, ok := lastDBWarning.Load(key); ok {
+		if time.Since(last.(time.Time)) < 1*time.Minute {
+			return // Skip duplicate log
+		}
+	}
+	lastDBWarning.Store(key, time.Now())
+
+	log.Warn().
+		Err(err).
+		Str("publisher_id", pubID).
+		Msg("PostgreSQL unavailable, falling back to memory cache")
+}
+
+// cachePublisher caches a publisher in memory with TTL
+func (p *PublisherAuth) cachePublisher(publisherID, allowedDomains string, ttl time.Duration) {
+	p.publisherCacheMu.Lock()
+	defer p.publisherCacheMu.Unlock()
+
+	if p.publisherCache == nil {
+		p.publisherCache = make(map[string]*publisherCacheEntry)
+	}
+
+	p.publisherCache[publisherID] = &publisherCacheEntry{
+		allowedDomains: allowedDomains,
+		expiresAt:      time.Now().Add(ttl),
+	}
+
+	// Cleanup old entries (keep cache bounded to prevent memory issues)
+	if len(p.publisherCache) > 1000 {
+		p.cleanupExpiredCache()
+	}
+}
+
+// getCachedPublisher retrieves a cached publisher if it exists and hasn't expired
+func (p *PublisherAuth) getCachedPublisher(publisherID string) string {
+	p.publisherCacheMu.RLock()
+	defer p.publisherCacheMu.RUnlock()
+
+	entry, ok := p.publisherCache[publisherID]
+	if !ok {
+		return ""
+	}
+
+	if time.Now().After(entry.expiresAt) {
+		return "" // Expired
+	}
+
+	return entry.allowedDomains
+}
+
+// cleanupExpiredCache removes expired cache entries
+func (p *PublisherAuth) cleanupExpiredCache() {
+	now := time.Now()
+	for pubID, entry := range p.publisherCache {
+		if now.After(entry.expiresAt) {
+			delete(p.publisherCache, pubID)
 		}
 	}
 }

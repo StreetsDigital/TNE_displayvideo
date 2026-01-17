@@ -50,6 +50,10 @@ type Exchange struct {
 	eidFilter       *fpd.EIDFilter
 	metrics         MetricsRecorder
 
+	// Per-bidder circuit breakers to prevent cascade failures
+	bidderBreakers   map[string]*idr.CircuitBreaker
+	bidderBreakersMu sync.RWMutex
+
 	// configMu protects fpdProcessor, eidFilter, and config.FPD
 	// for safe concurrent access during runtime config updates
 	configMu sync.RWMutex
@@ -222,11 +226,17 @@ func New(registry *adapters.Registry, config *Config) *Exchange {
 	}
 
 	ex := &Exchange{
-		registry:     registry,
-		httpClient:   adapters.NewHTTPClient(config.DefaultTimeout),
-		config:       config,
-		fpdProcessor: fpd.NewProcessor(fpdConfig),
-		eidFilter:    fpd.NewEIDFilter(fpdConfig),
+		registry:       registry,
+		httpClient:     adapters.NewHTTPClient(config.DefaultTimeout),
+		config:         config,
+		fpdProcessor:   fpd.NewProcessor(fpdConfig),
+		eidFilter:      fpd.NewEIDFilter(fpdConfig),
+		bidderBreakers: make(map[string]*idr.CircuitBreaker),
+	}
+
+	// Initialize circuit breaker for each registered bidder
+	for _, bidderCode := range registry.ListEnabledBidders() {
+		ex.initBidderCircuitBreaker(bidderCode)
 	}
 
 	if config.IDREnabled && config.IDRServiceURL != "" {
@@ -253,6 +263,46 @@ func (e *Exchange) Close() error {
 		return e.eventRecorder.Close()
 	}
 	return nil
+}
+
+// initBidderCircuitBreaker initializes a circuit breaker for a specific bidder
+func (e *Exchange) initBidderCircuitBreaker(bidderCode string) {
+	config := &idr.CircuitBreakerConfig{
+		FailureThreshold: 5,              // Open after 5 consecutive failures
+		SuccessThreshold: 2,              // Close after 2 successes in half-open
+		Timeout:          30 * time.Second, // Wait 30s before testing recovery
+		MaxConcurrent:    100,            // Max concurrent requests per bidder
+		OnStateChange: func(from, to string) {
+			logger.Log.Warn().
+				Str("bidder_code", bidderCode).
+				Str("from_state", from).
+				Str("to_state", to).
+				Msg("Bidder circuit breaker state changed")
+		},
+	}
+
+	e.bidderBreakersMu.Lock()
+	e.bidderBreakers[bidderCode] = idr.NewCircuitBreaker(config)
+	e.bidderBreakersMu.Unlock()
+}
+
+// getBidderCircuitBreaker retrieves the circuit breaker for a specific bidder
+func (e *Exchange) getBidderCircuitBreaker(bidderCode string) *idr.CircuitBreaker {
+	e.bidderBreakersMu.RLock()
+	defer e.bidderBreakersMu.RUnlock()
+	return e.bidderBreakers[bidderCode]
+}
+
+// GetBidderCircuitBreakerStats returns circuit breaker stats for all bidders
+func (e *Exchange) GetBidderCircuitBreakerStats() map[string]idr.CircuitBreakerStats {
+	e.bidderBreakersMu.RLock()
+	defer e.bidderBreakersMu.RUnlock()
+
+	stats := make(map[string]idr.CircuitBreakerStats)
+	for bidderCode, breaker := range e.bidderBreakers {
+		stats[bidderCode] = breaker.Stats()
+	}
+	return stats
 }
 
 // AuctionRequest contains auction parameters
@@ -1213,6 +1263,24 @@ func (e *Exchange) callBiddersWithFPD(ctx context.Context, req *openrtb.BidReque
 	sem := make(chan struct{}, maxConcurrent)
 
 	for _, bidderCode := range bidders {
+		// Check circuit breaker before calling bidder
+		breaker := e.getBidderCircuitBreaker(bidderCode)
+		if breaker != nil && breaker.IsOpen() {
+			// Circuit breaker is open - skip this bidder
+			result := &BidderResult{
+				BidderCode: bidderCode,
+				Errors:     []error{fmt.Errorf("circuit breaker open")},
+				TimedOut:   true, // Treat as timeout
+			}
+			results.Store(bidderCode, result)
+
+			logger.Log.Debug().
+				Str("bidder_code", bidderCode).
+				Msg("Skipping bidder - circuit breaker OPEN")
+
+			continue // Don't launch goroutine
+		}
+
 		// Try static registry first
 		adapterWithInfo, ok := e.registry.Get(bidderCode)
 		if ok {
@@ -1273,6 +1341,16 @@ func (e *Exchange) callBiddersWithFPD(ctx context.Context, req *openrtb.BidReque
 				bidderReq := e.cloneRequestWithFPD(req, code, bidderFPD)
 
 				result := e.callBidder(ctx, bidderReq, code, awi.Adapter, timeout)
+
+				// Record result in circuit breaker
+				breaker := e.getBidderCircuitBreaker(code)
+				if breaker != nil {
+					if len(result.Errors) > 0 || result.TimedOut {
+						breaker.RecordFailure()
+					} else if len(result.Bids) > 0 {
+						breaker.RecordSuccess()
+					}
+				}
 
 				results.Store(code, result) // P0-1: Thread-safe store
 			}(bidderCode, adapterWithInfo)
