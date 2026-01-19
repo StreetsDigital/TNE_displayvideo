@@ -720,3 +720,580 @@ func TestPrivacyMiddleware_NoAnonymizationWithoutGDPR(t *testing.T) {
 		t.Errorf("Expected original IP without GDPR, got %q", modifiedReq.Device.IP)
 	}
 }
+
+// Vendor Consent Validation Tests
+
+func TestCheckVendorConsent(t *testing.T) {
+	m := &PrivacyMiddleware{config: DefaultPrivacyConfig()}
+
+	// Valid TCF v2 consent string
+	validConsent := "CPXxRfAPXxRfAAfKABENB-CgAAAAAAAAAAYgAAAAAAAA"
+
+	tests := []struct {
+		name          string
+		consentString string
+		gvlID         int
+		expectConsent bool
+	}{
+		{"empty consent string", "", 123, false},
+		{"zero GVL ID", validConsent, 0, false},
+		{"negative GVL ID", validConsent, -1, false},
+		{"invalid consent string", "invalid", 123, false},
+		{"valid consent with vendor", validConsent, 1, false}, // This consent string may not have vendor 1
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := m.CheckVendorConsent(tt.consentString, tt.gvlID)
+			if result != tt.expectConsent {
+				t.Errorf("CheckVendorConsent(%q, %d) = %v, want %v",
+					tt.consentString, tt.gvlID, result, tt.expectConsent)
+			}
+		})
+	}
+}
+
+func TestCheckVendorConsents_Multiple(t *testing.T) {
+	m := &PrivacyMiddleware{config: DefaultPrivacyConfig()}
+
+	validConsent := "CPXxRfAPXxRfAAfKABENB-CgAAAAAAAAAAYgAAAAAAAA"
+
+	t.Run("empty consent string", func(t *testing.T) {
+		gvlIDs := []int{1, 2, 3}
+		results := m.CheckVendorConsents("", gvlIDs)
+
+		if len(results) != len(gvlIDs) {
+			t.Errorf("Expected %d results, got %d", len(gvlIDs), len(results))
+		}
+
+		// All should be false with empty consent
+		for gvlID, hasConsent := range results {
+			if hasConsent {
+				t.Errorf("Expected vendor %d to have no consent with empty string", gvlID)
+			}
+		}
+	})
+
+	t.Run("invalid consent string", func(t *testing.T) {
+		gvlIDs := []int{1, 2, 3}
+		results := m.CheckVendorConsents("invalid-consent", gvlIDs)
+
+		for gvlID, hasConsent := range results {
+			if hasConsent {
+				t.Errorf("Expected vendor %d to have no consent with invalid string", gvlID)
+			}
+		}
+	})
+
+	t.Run("valid consent string", func(t *testing.T) {
+		gvlIDs := []int{1, 2, 3}
+		results := m.CheckVendorConsents(validConsent, gvlIDs)
+
+		if len(results) != len(gvlIDs) {
+			t.Errorf("Expected %d results, got %d", len(gvlIDs), len(results))
+		}
+	})
+}
+
+func TestCheckVendorConsentStatic(t *testing.T) {
+	validConsent := "CPXxRfAPXxRfAAfKABENB-CgAAAAAAAAAAYgAAAAAAAA"
+
+	tests := []struct {
+		name          string
+		consentString string
+		gvlID         int
+		expectConsent bool
+	}{
+		{"empty consent", "", 123, false},
+		{"zero GVL ID", validConsent, 0, false},
+		{"negative GVL ID", validConsent, -1, false},
+		{"invalid consent", "not-valid", 123, false},
+		{"valid inputs", validConsent, 1, false}, // May not have vendor 1
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := CheckVendorConsentStatic(tt.consentString, tt.gvlID)
+			if result != tt.expectConsent {
+				t.Errorf("CheckVendorConsentStatic(%q, %d) = %v, want %v",
+					tt.consentString, tt.gvlID, result, tt.expectConsent)
+			}
+		})
+	}
+}
+
+func TestDetectRegulationFromGeo(t *testing.T) {
+	tests := []struct {
+		name       string
+		geo        *openrtb.Geo
+		regulation PrivacyRegulation
+	}{
+		{
+			"nil geo",
+			nil,
+			RegulationNone,
+		},
+		{
+			"Germany (GDPR)",
+			&openrtb.Geo{Country: "DEU"},
+			RegulationGDPR,
+		},
+		{
+			"France (GDPR)",
+			&openrtb.Geo{Country: "FRA"},
+			RegulationGDPR,
+		},
+		{
+			"United Kingdom (GDPR)",
+			&openrtb.Geo{Country: "GBR"},
+			RegulationGDPR,
+		},
+		{
+			"California (CCPA)",
+			&openrtb.Geo{Country: "USA", Region: "CA"},
+			RegulationCCPA,
+		},
+		{
+			"Virginia (VCDPA)",
+			&openrtb.Geo{Country: "USA", Region: "VA"},
+			RegulationVCDPA,
+		},
+		{
+			"Colorado (CPA)",
+			&openrtb.Geo{Country: "USA", Region: "CO"},
+			RegulationCPA,
+		},
+		{
+			"Connecticut (CTDPA)",
+			&openrtb.Geo{Country: "USA", Region: "CT"},
+			RegulationCTDPA,
+		},
+		{
+			"Utah (UCPA)",
+			&openrtb.Geo{Country: "USA", Region: "UT"},
+			RegulationUCPA,
+		},
+		{
+			"Texas (no regulation)",
+			&openrtb.Geo{Country: "USA", Region: "TX"},
+			RegulationNone,
+		},
+		{
+			"Brazil (LGPD)",
+			&openrtb.Geo{Country: "BRA"},
+			RegulationLGPD,
+		},
+		{
+			"Canada (PIPEDA)",
+			&openrtb.Geo{Country: "CAN"},
+			RegulationPIPEDA,
+		},
+		{
+			"Singapore (PDPA)",
+			&openrtb.Geo{Country: "SGP"},
+			RegulationPDPA,
+		},
+		{
+			"Japan (no regulation)",
+			&openrtb.Geo{Country: "JPN"},
+			RegulationNone,
+		},
+		{
+			"Empty country",
+			&openrtb.Geo{Country: ""},
+			RegulationNone,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := DetectRegulationFromGeo(tt.geo)
+			if result != tt.regulation {
+				t.Errorf("DetectRegulationFromGeo(%+v) = %v, want %v",
+					tt.geo, result, tt.regulation)
+			}
+		})
+	}
+}
+
+func TestShouldFilterBidderByGeo_GDPR(t *testing.T) {
+	validConsent := "CPXxRfAPXxRfAAfKABENB-CgAAAAAAAAAAYgAAAAAAAA"
+	gdpr := 1
+
+	tests := []struct {
+		name          string
+		req           *openrtb.BidRequest
+		gvlID         int
+		shouldFilter  bool
+		description   string
+	}{
+		{
+			"nil request",
+			nil,
+			123,
+			false,
+			"nil request should not filter",
+		},
+		{
+			"no geo data",
+			&openrtb.BidRequest{
+				ID: "test",
+			},
+			123,
+			false,
+			"no geo data should not filter",
+		},
+		{
+			"EU country with GDPR and valid consent",
+			&openrtb.BidRequest{
+				ID: "test",
+				Device: &openrtb.Device{
+					Geo: &openrtb.Geo{Country: "DEU"},
+				},
+				Regs: &openrtb.Regs{GDPR: &gdpr},
+				User: &openrtb.User{Consent: validConsent},
+			},
+			1,
+			true, // Will filter because vendor 1 likely not in consent
+			"EU with consent but vendor not consented",
+		},
+		{
+			"EU country with GDPR but no consent string",
+			&openrtb.BidRequest{
+				ID: "test",
+				Device: &openrtb.Device{
+					Geo: &openrtb.Geo{Country: "FRA"},
+				},
+				Regs: &openrtb.Regs{GDPR: &gdpr},
+				User: &openrtb.User{Consent: ""},
+			},
+			123,
+			true,
+			"EU with GDPR but no consent should filter",
+		},
+		{
+			"EU country but GDPR not set",
+			&openrtb.BidRequest{
+				ID: "test",
+				Device: &openrtb.Device{
+					Geo: &openrtb.Geo{Country: "DEU"},
+				},
+			},
+			123,
+			false,
+			"EU country but no GDPR flag should not filter",
+		},
+		{
+			"EU country with zero GVL ID",
+			&openrtb.BidRequest{
+				ID: "test",
+				Device: &openrtb.Device{
+					Geo: &openrtb.Geo{Country: "DEU"},
+				},
+				Regs: &openrtb.Regs{GDPR: &gdpr},
+				User: &openrtb.User{Consent: validConsent},
+			},
+			0,
+			false,
+			"zero GVL ID should not filter even in GDPR",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := ShouldFilterBidderByGeo(tt.req, tt.gvlID)
+			if result != tt.shouldFilter {
+				t.Errorf("%s: ShouldFilterBidderByGeo() = %v, want %v",
+					tt.description, result, tt.shouldFilter)
+			}
+		})
+	}
+}
+
+func TestShouldFilterBidderByGeo_CCPA(t *testing.T) {
+	tests := []struct {
+		name         string
+		req          *openrtb.BidRequest
+		gvlID        int
+		shouldFilter bool
+		description  string
+	}{
+		{
+			"California with opt-out",
+			&openrtb.BidRequest{
+				ID: "test",
+				Device: &openrtb.Device{
+					Geo: &openrtb.Geo{Country: "USA", Region: "CA"},
+				},
+				Regs: &openrtb.Regs{
+					USPrivacy: "1YYN", // User opted out
+				},
+			},
+			123,
+			true,
+			"CA with opt-out should filter",
+		},
+		{
+			"California without opt-out",
+			&openrtb.BidRequest{
+				ID: "test",
+				Device: &openrtb.Device{
+					Geo: &openrtb.Geo{Country: "USA", Region: "CA"},
+				},
+				Regs: &openrtb.Regs{
+					USPrivacy: "1YNN", // User did NOT opt out
+				},
+			},
+			123,
+			false,
+			"CA without opt-out should not filter",
+		},
+		{
+			"Virginia with opt-out",
+			&openrtb.BidRequest{
+				ID: "test",
+				Device: &openrtb.Device{
+					Geo: &openrtb.Geo{Country: "USA", Region: "VA"},
+				},
+				Regs: &openrtb.Regs{
+					USPrivacy: "1YYN",
+				},
+			},
+			123,
+			true,
+			"VA with opt-out should filter",
+		},
+		{
+			"Colorado with opt-out",
+			&openrtb.BidRequest{
+				ID: "test",
+				Device: &openrtb.Device{
+					Geo: &openrtb.Geo{Country: "USA", Region: "CO"},
+				},
+				Regs: &openrtb.Regs{
+					USPrivacy: "1YYN",
+				},
+			},
+			123,
+			true,
+			"CO with opt-out should filter",
+		},
+		{
+			"Privacy state but no USPrivacy string",
+			&openrtb.BidRequest{
+				ID: "test",
+				Device: &openrtb.Device{
+					Geo: &openrtb.Geo{Country: "USA", Region: "CA"},
+				},
+			},
+			123,
+			false,
+			"no USPrivacy string should not filter",
+		},
+		{
+			"Privacy state with malformed USPrivacy",
+			&openrtb.BidRequest{
+				ID: "test",
+				Device: &openrtb.Device{
+					Geo: &openrtb.Geo{Country: "USA", Region: "CA"},
+				},
+				Regs: &openrtb.Regs{
+					USPrivacy: "1Y", // Too short
+				},
+			},
+			123,
+			false,
+			"malformed USPrivacy should not filter",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := ShouldFilterBidderByGeo(tt.req, tt.gvlID)
+			if result != tt.shouldFilter {
+				t.Errorf("%s: ShouldFilterBidderByGeo() = %v, want %v",
+					tt.description, result, tt.shouldFilter)
+			}
+		})
+	}
+}
+
+func TestShouldFilterBidderByGeo_OtherRegulations(t *testing.T) {
+	tests := []struct {
+		name        string
+		geo         *openrtb.Geo
+		shouldFilter bool
+	}{
+		{"Brazil (LGPD)", &openrtb.Geo{Country: "BRA"}, false},
+		{"Canada (PIPEDA)", &openrtb.Geo{Country: "CAN"}, false},
+		{"Singapore (PDPA)", &openrtb.Geo{Country: "SGP"}, false},
+		{"No regulation country", &openrtb.Geo{Country: "JPN"}, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := &openrtb.BidRequest{
+				ID:     "test",
+				Device: &openrtb.Device{Geo: tt.geo},
+			}
+			result := ShouldFilterBidderByGeo(req, 123)
+			if result != tt.shouldFilter {
+				t.Errorf("ShouldFilterBidderByGeo() for %s = %v, want %v",
+					tt.name, result, tt.shouldFilter)
+			}
+		})
+	}
+}
+
+func TestValidateGeoConsent_EUWithoutGDPR(t *testing.T) {
+	// EU user detected but GDPR flag not set
+	config := DefaultPrivacyConfig()
+	config.GeoEnforcement = true
+	mw := NewPrivacyMiddleware(config)
+
+	called := false
+	handler := mw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		called = true
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	req := &openrtb.BidRequest{
+		ID:  "test-geo-1",
+		Imp: []openrtb.Imp{{ID: "imp1", Banner: &openrtb.Banner{}}},
+		Device: &openrtb.Device{
+			Geo: &openrtb.Geo{Country: "DEU"}, // Germany
+		},
+		// Missing: Regs.GDPR = 1
+	}
+
+	body, _ := json.Marshal(req)
+	httpReq := httptest.NewRequest(http.MethodPost, "/openrtb2/auction", bytes.NewReader(body))
+	rr := httptest.NewRecorder()
+
+	handler.ServeHTTP(rr, httpReq)
+
+	if called {
+		t.Error("Handler should NOT have been called - EU user without GDPR flag")
+	}
+	if rr.Code != http.StatusBadRequest {
+		t.Errorf("Expected status 400, got %d", rr.Code)
+	}
+
+	var resp map[string]interface{}
+	json.Unmarshal(rr.Body.Bytes(), &resp)
+	if resp["regulation"] != "GDPR" {
+		t.Errorf("Expected regulation=GDPR, got %v", resp["regulation"])
+	}
+}
+
+func TestValidateGeoConsent_CaliforniaWithoutUSPrivacy(t *testing.T) {
+	// California user detected but USPrivacy string not provided
+	config := DefaultPrivacyConfig()
+	config.GeoEnforcement = true
+	mw := NewPrivacyMiddleware(config)
+
+	called := false
+	handler := mw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		called = true
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	req := &openrtb.BidRequest{
+		ID:  "test-geo-2",
+		Imp: []openrtb.Imp{{ID: "imp1", Banner: &openrtb.Banner{}}},
+		Device: &openrtb.Device{
+			Geo: &openrtb.Geo{Country: "USA", Region: "CA"}, // California
+		},
+		// Missing: Regs.USPrivacy
+	}
+
+	body, _ := json.Marshal(req)
+	httpReq := httptest.NewRequest(http.MethodPost, "/openrtb2/auction", bytes.NewReader(body))
+	rr := httptest.NewRecorder()
+
+	handler.ServeHTTP(rr, httpReq)
+
+	if called {
+		t.Error("Handler should NOT have been called - CA user without USPrivacy string")
+	}
+	if rr.Code != http.StatusBadRequest {
+		t.Errorf("Expected status 400, got %d", rr.Code)
+	}
+
+	var resp map[string]interface{}
+	json.Unmarshal(rr.Body.Bytes(), &resp)
+	if resp["regulation"] != "CCPA" {
+		t.Errorf("Expected regulation=CCPA, got %v", resp["regulation"])
+	}
+}
+
+func TestValidateGeoConsent_GeoEnforcementDisabled(t *testing.T) {
+	// When geo enforcement is disabled, EU users without GDPR flag should pass
+	config := DefaultPrivacyConfig()
+	config.GeoEnforcement = false // Disabled
+	mw := NewPrivacyMiddleware(config)
+
+	called := false
+	handler := mw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		called = true
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	req := &openrtb.BidRequest{
+		ID:  "test-geo-3",
+		Imp: []openrtb.Imp{{ID: "imp1", Banner: &openrtb.Banner{}}},
+		Device: &openrtb.Device{
+			Geo: &openrtb.Geo{Country: "DEU"}, // Germany
+		},
+		// No GDPR flag, but geo enforcement is disabled
+	}
+
+	body, _ := json.Marshal(req)
+	httpReq := httptest.NewRequest(http.MethodPost, "/openrtb2/auction", bytes.NewReader(body))
+	rr := httptest.NewRecorder()
+
+	handler.ServeHTTP(rr, httpReq)
+
+	if !called {
+		t.Error("Handler should have been called when geo enforcement is disabled")
+	}
+	if rr.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", rr.Code)
+	}
+}
+
+func TestValidateGeoConsent_UserGeoFallback(t *testing.T) {
+	// Test that user.geo is used when device.geo is not available
+	config := DefaultPrivacyConfig()
+	config.GeoEnforcement = true
+	mw := NewPrivacyMiddleware(config)
+
+	called := false
+	handler := mw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		called = true
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	req := &openrtb.BidRequest{
+		ID:  "test-geo-4",
+		Imp: []openrtb.Imp{{ID: "imp1", Banner: &openrtb.Banner{}}},
+		// No device.geo
+		User: &openrtb.User{
+			Geo: &openrtb.Geo{Country: "FRA"}, // France
+		},
+		// Missing: Regs.GDPR = 1
+	}
+
+	body, _ := json.Marshal(req)
+	httpReq := httptest.NewRequest(http.MethodPost, "/openrtb2/auction", bytes.NewReader(body))
+	rr := httptest.NewRecorder()
+
+	handler.ServeHTTP(rr, httpReq)
+
+	if called {
+		t.Error("Handler should NOT have been called - EU user (via user.geo) without GDPR flag")
+	}
+	if rr.Code != http.StatusBadRequest {
+		t.Errorf("Expected status 400, got %d", rr.Code)
+	}
+}
