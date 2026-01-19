@@ -1,0 +1,57 @@
+FROM postgres:16-alpine
+
+# Install required tools
+RUN apk add --no-cache \
+    bash \
+    aws-cli \
+    dcron \
+    postgresql-client \
+    tzdata
+
+# Create backup directory
+RUN mkdir -p /backups/daily /backups/weekly /backups/monthly /backups/latest
+
+# Copy backup and restore scripts
+COPY backup-postgres.sh /usr/local/bin/backup-postgres.sh
+COPY restore-postgres.sh /usr/local/bin/restore-postgres.sh
+
+# Make scripts executable
+RUN chmod +x /usr/local/bin/backup-postgres.sh \
+    && chmod +x /usr/local/bin/restore-postgres.sh
+
+# Create crontab for automated backups
+# Default: Daily at 2 AM (configurable via BACKUP_CRON env var)
+RUN echo "0 2 * * * /usr/local/bin/backup-postgres.sh >> /var/log/backup.log 2>&1" > /etc/crontabs/root
+
+# Create entrypoint script
+RUN cat > /entrypoint.sh <<'EOF'
+#!/bin/bash
+set -e
+
+# Update crontab if BACKUP_CRON is set
+if [ -n "${BACKUP_CRON}" ]; then
+    echo "${BACKUP_CRON} /usr/local/bin/backup-postgres.sh >> /var/log/backup.log 2>&1" > /etc/crontabs/root
+    echo "Custom backup schedule: ${BACKUP_CRON}"
+fi
+
+# Run immediate backup if IMMEDIATE_BACKUP is set
+if [ "${IMMEDIATE_BACKUP}" = "true" ]; then
+    echo "Running immediate backup..."
+    /usr/local/bin/backup-postgres.sh
+fi
+
+# Start cron daemon
+echo "Starting backup scheduler..."
+echo "Backup schedule: $(cat /etc/crontabs/root)"
+crond -f -l 2
+EOF
+
+RUN chmod +x /entrypoint.sh
+
+# Set timezone (configurable via TZ env var)
+ENV TZ=UTC
+
+# Create log file
+RUN touch /var/log/backup.log
+
+ENTRYPOINT ["/entrypoint.sh"]

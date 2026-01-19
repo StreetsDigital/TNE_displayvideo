@@ -161,6 +161,50 @@ services:
         max-size: "50m"  # Increased for WAF logs
         max-file: "10"
 
+  # PostgreSQL Automated Backup
+  backup:
+    build:
+      context: .
+      dockerfile: Dockerfile.backup
+    container_name: catalyst-backup
+    restart: unless-stopped
+    environment:
+      POSTGRES_HOST: catalyst-postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${DB_NAME:-catalyst}
+      POSTGRES_USER: ${DB_USER:-catalyst}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-changeme}
+      BACKUP_CRON: ${BACKUP_CRON:-0 2 * * *}
+      RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-7}
+      RETENTION_WEEKS: ${BACKUP_RETENTION_WEEKS:-4}
+      RETENTION_MONTHS: ${BACKUP_RETENTION_MONTHS:-3}
+      S3_BUCKET: ${BACKUP_S3_BUCKET:-}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+      AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION:-us-east-1}
+      TZ: ${TZ:-UTC}
+      IMMEDIATE_BACKUP: ${IMMEDIATE_BACKUP:-false}
+    volumes:
+      - backup-data:/backups
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - catalyst-network
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.1'
+          memory: 128M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
 networks:
   catalyst-network:
     driver: bridge
@@ -169,4 +213,6 @@ volumes:
   postgres-data:
     driver: local
   redis-data:
+    driver: local
+  backup-data:
     driver: local
