@@ -10,7 +10,7 @@ import (
 	"github.com/thenexusengine/tne_springwire/pkg/vast"
 )
 
-// VASTResponseBuilder builds VAST responses from bid responses
+// VASTResponseBuilder builds VAST responses from auction responses
 type VASTResponseBuilder struct {
 	trackingBaseURL string
 	version         string
@@ -24,15 +24,15 @@ func NewVASTResponseBuilder(trackingBaseURL string) *VASTResponseBuilder {
 	}
 }
 
-// BuildVASTResponse creates a VAST response from a bid response
-func (b *VASTResponseBuilder) BuildVASTResponse(bidReq *openrtb.BidRequest, bidResp *BidResponse) (*vast.VAST, error) {
-	if bidResp == nil || len(bidResp.SeatBid) == 0 {
+// BuildVASTFromAuction creates a VAST response from an auction response
+func (b *VASTResponseBuilder) BuildVASTFromAuction(bidReq *openrtb.BidRequest, auctionResp *AuctionResponse) (*vast.VAST, error) {
+	if auctionResp == nil || auctionResp.BidResponse == nil || len(auctionResp.BidResponse.SeatBid) == 0 {
 		return vast.CreateEmptyVAST(), nil
 	}
 
 	builder := vast.NewBuilder(b.version)
 
-	for _, seatBid := range bidResp.SeatBid {
+	for _, seatBid := range auctionResp.BidResponse.SeatBid {
 		for _, bid := range seatBid.Bid {
 			// Extract video impression
 			imp := findImpression(bidReq.Imp, bid.ImpID)
@@ -93,31 +93,6 @@ func (b *VASTResponseBuilder) BuildVASTResponse(bidReq *openrtb.BidRequest, bidR
 	return builder.Build()
 }
 
-// BidResponse represents a bid response (simplified)
-type BidResponse struct {
-	ID      string    `json:"id"`
-	SeatBid []SeatBid `json:"seatbid"`
-	Cur     string    `json:"cur"`
-}
-
-// SeatBid represents a seat bid
-type SeatBid struct {
-	Bid  []Bid  `json:"bid"`
-	Seat string `json:"seat"`
-}
-
-// Bid represents a single bid
-type Bid struct {
-	ID    string  `json:"id"`
-	ImpID string  `json:"impid"`
-	Price float64 `json:"price"`
-	NURL  string  `json:"nurl,omitempty"`
-	AdM   string  `json:"adm,omitempty"`
-	AdID  string  `json:"adid,omitempty"`
-	W     int     `json:"w,omitempty"`
-	H     int     `json:"h,omitempty"`
-}
-
 // findImpression finds an impression by ID
 func findImpression(imps []openrtb.Imp, impID string) *openrtb.Imp {
 	for i := range imps {
@@ -134,13 +109,8 @@ type VASTHandler struct {
 	exchange *Exchange
 }
 
-// Exchange is a placeholder for the actual exchange implementation
-type Exchange interface {
-	RunAuction(req *openrtb.BidRequest) (*BidResponse, error)
-}
-
 // NewVASTHandler creates a new VAST handler
-func NewVASTHandler(exchange Exchange, trackingBaseURL string) *VASTHandler {
+func NewVASTHandler(exchange *Exchange, trackingBaseURL string) *VASTHandler {
 	return &VASTHandler{
 		builder:  NewVASTResponseBuilder(trackingBaseURL),
 		exchange: exchange,
@@ -149,8 +119,10 @@ func NewVASTHandler(exchange Exchange, trackingBaseURL string) *VASTHandler {
 
 // ServeHTTP handles VAST endpoint requests
 func (h *VASTHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
 	// Parse bid request from query params or body
-	bidReq, err := parseBidRequest(r)
+	bidReq, err := parseVASTBidRequest(r)
 	if err != nil {
 		writeVASTError(w, "Invalid request")
 		return
@@ -165,15 +137,21 @@ func (h *VASTHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Create auction request
+	auctionReq := &AuctionRequest{
+		BidRequest: bidReq,
+		Timeout:    time.Duration(bidReq.TMax) * time.Millisecond,
+	}
+
 	// Run auction
-	bidResp, err := h.exchange.RunAuction(bidReq)
+	auctionResp, err := h.exchange.RunAuction(ctx, auctionReq)
 	if err != nil {
 		writeVASTError(w, "Auction failed")
 		return
 	}
 
 	// Build VAST response
-	vastResp, err := h.builder.BuildVASTResponse(bidReq, bidResp)
+	vastResp, err := h.builder.BuildVASTFromAuction(bidReq, auctionResp)
 	if err != nil {
 		writeVASTError(w, "Failed to build VAST")
 		return
@@ -191,23 +169,46 @@ func (h *VASTHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Write(data)
 }
 
-// parseBidRequest parses a bid request from an HTTP request
-func parseBidRequest(r *http.Request) (*openrtb.BidRequest, error) {
-	// Simplified implementation - would need full OpenRTB parsing
+// parseVASTBidRequest parses a bid request from an HTTP request
+func parseVASTBidRequest(r *http.Request) (*openrtb.BidRequest, error) {
+	q := r.URL.Query()
+
+	// Get dimensions
+	w := 1920
+	h := 1080
+	if qw := q.Get("w"); qw != "" {
+		fmt.Sscanf(qw, "%d", &w)
+	}
+	if qh := q.Get("h"); qh != "" {
+		fmt.Sscanf(qh, "%d", &h)
+	}
+
+	// Get duration constraints
+	minDur := 5
+	maxDur := 30
+	if qmin := q.Get("mindur"); qmin != "" {
+		fmt.Sscanf(qmin, "%d", &minDur)
+	}
+	if qmax := q.Get("maxdur"); qmax != "" {
+		fmt.Sscanf(qmax, "%d", &maxDur)
+	}
+
 	return &openrtb.BidRequest{
-		ID: r.URL.Query().Get("id"),
+		ID: q.Get("id"),
 		Imp: []openrtb.Imp{
 			{
 				ID: "1",
 				Video: &openrtb.Video{
-					Mimes:       []string{"video/mp4"},
-					MinDuration: 5,
-					MaxDuration: 30,
-					W:           1920,
-					H:           1080,
+					Mimes:       []string{"video/mp4", "video/webm"},
+					MinDuration: minDur,
+					MaxDuration: maxDur,
+					W:           w,
+					H:           h,
+					Protocols:   []int{2, 3, 5, 6}, // VAST 2.0, 3.0, 2.0 Wrapper, 3.0 Wrapper
 				},
 			},
 		},
+		TMax: 1000, // Default 1 second timeout
 	}, nil
 }
 
