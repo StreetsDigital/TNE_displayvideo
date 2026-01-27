@@ -6,79 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
-	"time"
 )
-
-// TestAuthCacheSizeLimit verifies that the auth cache respects the size limit
-func TestAuthCacheSizeLimit(t *testing.T) {
-	auth := NewAuth(&AuthConfig{
-		Enabled: true,
-		APIKeys: map[string]string{},
-	})
-	defer auth.Shutdown()
-
-	// The cache should enforce the maxCacheSize limit
-	if auth.maxCacheSize != 10000 {
-		t.Errorf("expected maxCacheSize=10000, got %d", auth.maxCacheSize)
-	}
-
-	// Add entries up to the limit
-	for i := 0; i < auth.maxCacheSize+100; i++ {
-		key := string(rune('a' + (i % 26)))
-		auth.updateCache(key, "pub")
-	}
-
-	// Cache should not exceed the limit
-	auth.cacheMu.RLock()
-	size := len(auth.keyCache)
-	auth.cacheMu.RUnlock()
-
-	if size > auth.maxCacheSize {
-		t.Errorf("cache size %d exceeds limit %d", size, auth.maxCacheSize)
-	}
-}
-
-// TestAuthPeriodicCleanup verifies that expired cache entries are cleaned up
-func TestAuthPeriodicCleanup(t *testing.T) {
-	auth := NewAuth(&AuthConfig{
-		Enabled: true,
-		APIKeys: map[string]string{},
-	})
-	defer auth.Shutdown()
-
-	// Add an entry that will expire quickly
-	auth.cacheTimeout = 100 * time.Millisecond
-	auth.updateCache("test-key", "pub1")
-
-	// Wait for expiration
-	time.Sleep(200 * time.Millisecond)
-
-	// Manually trigger cleanup
-	auth.cleanupExpiredCacheEntries()
-
-	// Entry should be removed
-	auth.cacheMu.RLock()
-	_, exists := auth.keyCache["test-key"]
-	auth.cacheMu.RUnlock()
-
-	if exists {
-		t.Error("expected expired cache entry to be removed")
-	}
-}
-
-// TestAuthShutdown verifies graceful shutdown
-func TestAuthShutdown(t *testing.T) {
-	auth := NewAuth(&AuthConfig{
-		Enabled: true,
-		APIKeys: map[string]string{},
-	})
-
-	// Should shut down cleanly
-	auth.Shutdown()
-
-	// Should be safe to call multiple times
-	auth.Shutdown()
-}
 
 // TestPrivacyRequestBodySizeLimit verifies that large request bodies are rejected
 func TestPrivacyRequestBodySizeLimit(t *testing.T) {

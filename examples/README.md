@@ -277,4 +277,4 @@ These are already configured in:
 - `multi-bidder-request.json`
 - `test-rubicon-params.sh`
 
-**Security Note**: These examples are safe to commit to your repository as they only contain Rubicon placement IDs, not sensitive API keys.
+**Security Note**: These examples are safe to commit to your repository as they only contain Rubicon placement IDs, not sensitive credentials.

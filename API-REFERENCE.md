@@ -8,7 +8,7 @@
 
 ## Table of Contents
 
-1. [Authentication](#authentication)
+1. [Publisher Identification](#publisher-identification)
 2. [Endpoints](#endpoints)
 3. [Auction Endpoint](#auction-endpoint)
 4. [Health Checks](#health-checks)
@@ -18,26 +18,16 @@
 
 ---
 
-## Authentication
+## Publisher Identification
 
-### API Key Authentication
+Auction requests are attributed using the publisher ID provided in the OpenRTB payload.
 
-All auction requests require authentication via API key.
+**Fields:**
+- `site.publisher.id` for web inventory
+- `app.publisher.id` for app inventory
 
-**Method:** HTTP Header
-**Header:** `X-API-Key`
-**Format:** 32-character alphanumeric string
-
-**Example:**
-```bash
-curl -X POST https://catalyst.springwire.ai/openrtb2/auction \
-  -H "X-API-Key: your-api-key-here" \
-  -H "Content-Type: application/json" \
-  -d @bid-request.json
-```
-
-**Publisher Signup:**
-Contact your account manager or email: publishers@springwire.ai
+**Validation:**
+Publisher IDs are validated against the configured publisher registry and allowed domains/bundles.
 
 ---
 
@@ -47,7 +37,7 @@ Contact your account manager or email: publishers@springwire.ai
 
 | Endpoint | Method | Auth | Description |
 |----------|--------|------|-------------|
-| `/openrtb2/auction` | POST | Required | Submit bid request |
+| `/openrtb2/auction` | POST | Publisher validation | Submit bid request |
 | `/health` | GET | None | Basic health check |
 | `/health/ready` | GET | None | Readiness probe |
 | `/metrics` | GET | None | Prometheus metrics |
@@ -65,7 +55,6 @@ Submit a bid request to the ad exchange.
 POST /openrtb2/auction HTTP/1.1
 Host: catalyst.springwire.ai
 Content-Type: application/json
-X-API-Key: your-api-key-here
 
 {
   "id": "auction-123",
@@ -83,7 +72,10 @@ X-API-Key: your-api-key-here
   "site": {
     "id": "site-123",
     "domain": "example.com",
-    "page": "https://example.com/article"
+    "page": "https://example.com/article",
+    "publisher": {
+      "id": "pub-123"
+    }
   },
   "device": {
     "ua": "Mozilla/5.0...",
@@ -291,8 +283,7 @@ pbs_http_request_duration_seconds_count{endpoint="/openrtb2/auction"} 10000
 | 200 | OK | Bid response with bids |
 | 204 | No Content | No bids returned |
 | 400 | Bad Request | Invalid bid request |
-| 401 | Unauthorized | Missing or invalid API key |
-| 403 | Forbidden | API key valid but access denied |
+| 403 | Forbidden | Publisher validation failed |
 | 429 | Too Many Requests | Rate limit exceeded |
 | 500 | Internal Server Error | Server-side error |
 | 503 | Service Unavailable | Service is down or not ready |
@@ -362,7 +353,10 @@ Retry-After: 60
     }
   }],
   "site": {
-    "page": "https://example.com"
+    "page": "https://example.com",
+    "publisher": {
+      "id": "pub-123"
+    }
   },
   "device": {
     "ua": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
@@ -390,7 +384,10 @@ Retry-After: 60
     "id": "site-456",
     "domain": "publisher.com",
     "page": "https://publisher.com/news/article",
-    "cat": ["IAB12"]
+    "cat": ["IAB12"],
+    "publisher": {
+      "id": "pub-123"
+    }
   },
   "device": {
     "ua": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)",
@@ -430,7 +427,10 @@ Retry-After: 60
     "name": "My Mobile App",
     "bundle": "com.example.app",
     "storeurl": "https://play.google.com/store/apps/details?id=com.example.app",
-    "cat": ["IAB1"]
+    "cat": ["IAB1"],
+    "publisher": {
+      "id": "pub-123"
+    }
   },
   "device": {
     "ua": "Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X)",

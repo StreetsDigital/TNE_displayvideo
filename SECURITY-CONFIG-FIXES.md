@@ -136,23 +136,6 @@ healthcheck:
     ping | grep -q PONG'
 ```
 
-### 6. Auth Enabled by Default (internal/middleware/auth.go)
-
-**Security Issue**: Authentication was disabled by default (opt-in), allowing unauthenticated access.
-
-**Fixes Applied**:
-- Changed `DefaultAuthConfig()` to enable authentication by default (secure by default)
-- Old behavior: `Enabled: os.Getenv("AUTH_ENABLED") == "true"` (disabled unless explicitly set to "true")
-- New behavior: `Enabled: os.Getenv("AUTH_ENABLED") != "false"` (enabled unless explicitly set to "false")
-
-**Behavior Table**:
-| AUTH_ENABLED Value | Old Behavior | New Behavior |
-|-------------------|--------------|--------------|
-| (not set)         | Disabled ❌   | Enabled ✅    |
-| "true"            | Enabled ✅    | Enabled ✅    |
-| "false"           | Disabled ❌   | Disabled ❌   |
-| "1", "yes", etc.  | Enabled ✅    | Enabled ✅    |
-| "invalid"         | Disabled ❌   | Enabled ✅    |
 
 ## Testing
 
@@ -194,14 +177,6 @@ Added comprehensive tests in `cmd/server/config_test.go`:
    - Tests integer parsing from environment variables
    - Tests default value fallback
    - Tests invalid value handling
-
-Updated existing tests in `internal/middleware/auth_test.go`:
-
-1. **TestDefaultAuthConfig** - Updated to expect auth enabled by default
-2. **TestDefaultAuthConfig_ExplicitlyDisabled** - Tests AUTH_ENABLED=false
-3. **TestDefaultAuthConfig_SecureByDefault** (5 test cases)
-   - Tests various AUTH_ENABLED values
-   - Tests secure-by-default behavior
 
 ### Test Results
 
@@ -270,15 +245,11 @@ All helpers are implemented without external dependencies (following Go developm
 
 ### Modified Environment Variables
 
-1. **AUTH_ENABLED**
-   - Old: Must be "true" to enable (opt-in)
-   - New: Must be "false" to disable (opt-out, secure by default)
-
-2. **DB_PASSWORD** (docker-compose.yml)
+1. **DB_PASSWORD** (docker-compose.yml)
    - Old: Optional with default "changeme"
    - New: Required, no default (fails if not set)
 
-3. **REDIS_PASSWORD** (docker-compose.yml)
+2. **REDIS_PASSWORD** (docker-compose.yml)
    - Old: Optional
    - New: Required, no default (fails if not set)
 
@@ -297,8 +268,6 @@ export DB_PASSWORD="any-password-16chars+"  # Still enforces min length
 # Development - CORS wildcard allowed
 export CORS_ORIGINS="*"
 
-# Development - Auth can be disabled (not recommended)
-export AUTH_ENABLED=false
 ```
 
 ### Production Environment
@@ -331,13 +300,7 @@ export DB_SSL_MODE=require
 export CORS_ORIGINS=https://example.com,https://app.example.com,https://admin.example.com
 ```
 
-5. Leave authentication enabled (default):
-```bash
-# Auth is enabled by default - do NOT set AUTH_ENABLED=false in production
-# (no need to set AUTH_ENABLED=true, it's the default)
-```
-
-6. Optional: Configure connection pools:
+5. Optional: Configure connection pools:
 ```bash
 export DB_MAX_CONNECTIONS=200
 export DB_MAX_IDLE_CONNS=20
@@ -389,7 +352,6 @@ docker-compose up -d
 - ✅ SSL required in production environments
 - ✅ Connection pools limited to 1-1000 connections
 - ✅ CORS explicit origins required in production
-- ✅ Authentication enabled by default (secure by default)
 
 ## Breaking Changes
 
@@ -421,13 +383,6 @@ Error: DB_PASSWORD environment variable is required. Set a strong password (min 
 
 **Migration**: Set `ENVIRONMENT=production` and configure required settings.
 
-### 4. Authentication
-**Impact**: Authentication is now enabled by default. Services expecting unauthenticated access will fail.
-
-**Migration**:
-- Option 1 (Recommended): Configure API keys via AUTH_ENABLED and API_KEYS environment variables
-- Option 2 (Not recommended): Explicitly disable auth with AUTH_ENABLED=false
-
 ## Rollback Plan
 
 If issues arise, you can temporarily roll back changes:
@@ -442,11 +397,6 @@ git checkout HEAD~1 -- cmd/server/config.go
 git checkout HEAD~1 -- deployment/docker-compose.yml
 ```
 
-3. **Revert auth.go**:
-```bash
-git checkout HEAD~1 -- internal/middleware/auth.go
-```
-
 However, it's strongly recommended to fix configuration issues instead of rolling back security fixes.
 
 ## Files Modified
@@ -454,11 +404,9 @@ However, it's strongly recommended to fix configuration issues instead of rollin
 ### Source Files
 1. `/cmd/server/config.go` - Password validation, SSL mode checking, connection pool bounds, CORS validation
 2. `/deployment/docker-compose.yml` - Required passwords with no defaults
-3. `/internal/middleware/auth.go` - Authentication enabled by default
 
 ### Test Files
 1. `/cmd/server/config_test.go` - Added 37 new security test cases, updated all existing tests
-2. `/internal/middleware/auth_test.go` - Added 6 new test cases for secure-by-default behavior
 
 ### Documentation
 1. `/SECURITY-CONFIG-FIXES.md` - This document
@@ -487,12 +435,7 @@ go test ./cmd/server -v -run TestDatabaseConfigValidate_ConnectionPoolBounds
 ENVIRONMENT=production go test ./cmd/server -v -run TestServerConfigValidate_CORSProduction
 ```
 
-### 5. Test Secure-by-Default Auth
-```bash
-go test ./internal/middleware -v -run TestDefaultAuthConfig_SecureByDefault
-```
-
-### 6. Test Docker Compose (should fail without passwords)
+### 5. Test Docker Compose (should fail without passwords)
 ```bash
 unset DB_PASSWORD REDIS_PASSWORD
 docker-compose config
@@ -527,6 +470,5 @@ These security fixes address the following issues:
 - CRITICAL: SSL can be disabled in production
 - CRITICAL: No connection pool limits
 - CRITICAL: CORS wildcard allowed in production
-- CRITICAL: Authentication disabled by default
 
 All fixes maintain backward compatibility for development environments while enforcing secure configurations in production.

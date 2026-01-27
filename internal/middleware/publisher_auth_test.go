@@ -408,7 +408,6 @@ func TestParsePublishers(t *testing.T) {
 func TestDefaultPublisherAuthConfig(t *testing.T) {
 	// Clear env vars
 	os.Unsetenv("PUBLISHER_AUTH_ENABLED")
-	os.Unsetenv("AUTH_ENABLED")
 	os.Unsetenv("PUBLISHER_ALLOW_UNREGISTERED")
 	os.Unsetenv("REGISTERED_PUBLISHERS")
 	os.Unsetenv("PUBLISHER_VALIDATE_DOMAIN")
@@ -437,17 +436,6 @@ func TestDefaultPublisherAuthConfig_Disabled(t *testing.T) {
 
 	if config.Enabled {
 		t.Error("Expected auth to be disabled when PUBLISHER_AUTH_ENABLED=false")
-	}
-}
-
-func TestDefaultPublisherAuthConfig_DevMode(t *testing.T) {
-	os.Setenv("AUTH_ENABLED", "false")
-	defer os.Unsetenv("AUTH_ENABLED")
-
-	config := DefaultPublisherAuthConfig()
-
-	if !config.AllowUnregistered {
-		t.Error("Expected AllowUnregistered=true in dev mode")
 	}
 }
 

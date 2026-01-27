@@ -33,10 +33,7 @@ func DefaultPublisherAuthConfig() *PublisherAuthConfig {
 	// Production-secure default: enabled unless explicitly disabled
 	enabled := os.Getenv("PUBLISHER_AUTH_ENABLED") != "false"
 
-	// In development mode (AUTH_ENABLED=false), also allow unregistered publishers
-	// This maintains backward compatibility while being secure by default
-	devMode := os.Getenv("AUTH_ENABLED") == "false"
-	allowUnregistered := os.Getenv("PUBLISHER_ALLOW_UNREGISTERED") == "true" || devMode
+	allowUnregistered := os.Getenv("PUBLISHER_ALLOW_UNREGISTERED") == "true"
 
 	return &PublisherAuthConfig{
 		Enabled:           enabled,

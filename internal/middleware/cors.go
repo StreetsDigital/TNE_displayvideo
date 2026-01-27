@@ -42,7 +42,6 @@ func DefaultCORSConfig() *CORSConfig {
 		AllowedMethods: []string{"GET", "POST", "OPTIONS"},
 		AllowedHeaders: []string{
 			"Content-Type",
-			"X-API-Key",
 			"X-Request-ID",
 			"Authorization",
 			"Accept",

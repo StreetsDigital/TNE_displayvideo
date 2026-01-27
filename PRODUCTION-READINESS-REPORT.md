@@ -78,7 +78,7 @@ The TNE Catalyst programmatic ad exchange has undergone comprehensive production
 
 **Impact:**
 - Prevents unauthorized Redis access
-- Protects session data, auction state, API keys
+- Protects session data, auction state, credentials
 - Development-friendly with production security
 
 **Compliance:** PCI-DSS 8.2.1, SOC 2 CC6.1, NIST 800-53 IA-2
@@ -396,7 +396,7 @@ OVERALL                                        80.1%
 2. **Production Secrets** (MEDIUM)
    - Change default PostgreSQL password
    - Generate strong Redis password
-   - Rotate all API keys
+   - Rotate all credentials
 
 3. **S3 Backup Configuration** (LOW)
    - Run `setup-s3-backups.sh`

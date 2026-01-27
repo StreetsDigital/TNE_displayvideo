@@ -209,7 +209,7 @@ All deployment is via Docker Compose on catalyst.springwire.ai.
 | `PUBLISHER_VALIDATE_DOMAIN` | bool | `false` | Validate domain matches registered |
 | `REGISTERED_PUBLISHERS` | string | `""` | `pub1:domain1.com,pub2:domain2.com` format |
 
-**Note**: When `PUBLISHER_AUTH_ENABLED=true`, `/openrtb2/auction` bypasses general API key auth. When disabled, auction requires API keys.
+**Note**: Publisher validation uses `site.publisher.id` or `app.publisher.id` from the OpenRTB request plus optional domain/bundle checks.
 
 ### Example Configurations
 

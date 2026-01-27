@@ -25,8 +25,8 @@ const maxRequestBodySize = 1024 * 1024
 // P2-1: Enabled by default to prevent information disclosure
 var debugRequiresAuth = os.Getenv("DEBUG_REQUIRES_AUTH") != "false"
 
-// GetPublisherID retrieves the authenticated publisher ID from context
-// This is set by auth/publisher_auth middleware after validation
+// GetPublisherID retrieves the publisher ID from context
+// This is set by publisher_auth middleware after validation
 func GetPublisherID(ctx context.Context) (string, bool) {
 	// Use raw string key (same as middleware packages)
 	publisherID, ok := ctx.Value("publisher_id").(string)
@@ -80,11 +80,11 @@ func (h *AuctionHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	debugEnabled := false
 	if debugRequested {
 		if debugRequiresAuth {
-			// Check for API key in headers
+			// Check for publisher identity in context
 			if hasAPIKey(r) {
 				debugEnabled = true
 			} else {
-				logger.Log.Debug().Msg("Debug mode requested without authentication, ignoring")
+				logger.Log.Debug().Msg("Debug mode requested without publisher context, ignoring")
 			}
 		} else {
 			debugEnabled = true
@@ -240,11 +240,11 @@ func writeError(w http.ResponseWriter, message string, status int) {
 	}
 }
 
-// hasAPIKey checks if request has valid API key
+// hasAPIKey checks if request has an authenticated publisher context
 // P2-1: Used to gate debug mode access
 func hasAPIKey(r *http.Request) bool {
 	// Check context (secure - can't be spoofed by client)
-	// Publisher ID is set by auth middleware after validation
+	// Publisher ID is set by publisher_auth middleware after validation
 	if publisherID, ok := GetPublisherID(r.Context()); ok && publisherID != "" {
 		return true
 	}

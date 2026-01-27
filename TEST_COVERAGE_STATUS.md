@@ -163,8 +163,7 @@ Last updated: 2026-01-16
 
 4. **`pkg/redis`** (0% → 80%+)
    - Redis client wrapper
-   - API key validation
-   - **Impact:** Authentication, caching
+   - **Impact:** Caching
    - **Effort:** Low (simple wrapper)
 
 ### 📊 Nice to Have

@@ -103,74 +103,17 @@ defer pauseAdService.Shutdown()
 
 ---
 
-## Fix 3: Auth Middleware - Cache Size Limit & Cleanup
+## Fix 3: Auth Middleware - Removed
 
-### Issue
-**File:** `/internal/middleware/auth.go:256-272`
-**Severity:** MEDIUM
-**Description:** `keyCache` map grows unbounded, leading to memory leak in high-traffic environments.
-
-### Fix Applied
-- Implemented size limit of 10,000 entries (configurable via `maxCacheSize`)
-- Added LRU-like eviction when cache is full (evicts oldest entry)
-- Added periodic cleanup goroutine running every 10 minutes
-- Removes expired cache entries automatically
-- Implemented graceful shutdown mechanism
-
-### Code Changes
-```go
-// Added fields:
-type Auth struct {
-    // ... existing fields
-    maxCacheSize int
-    stopCleanup  chan struct{}
-    cleanupDone  chan struct{}
-    shutdown     bool
-    shutdownMu   sync.Mutex
-}
-
-// New methods:
-- periodicCacheCleanup() - Background goroutine
-- cleanupExpiredCacheEntries() - Cleanup logic
-- Shutdown() - Graceful shutdown
-
-// Updated method:
-- updateCache() - Now enforces size limit with eviction
-```
-
-### Cache Behavior
-1. **Size Limit:** Maximum 10,000 cached API keys
-2. **Eviction:** When full, evicts entry with oldest expiration time
-3. **Periodic Cleanup:** Runs every 10 minutes to remove expired entries
-4. **TTL:** Positive results cached for configured timeout, negative results for shorter duration
-
-### Testing
-- ✅ `TestAuthCacheSizeLimit` - Verifies cache respects size limit
-- ✅ `TestAuthPeriodicCleanup` - Verifies expired entries are removed
-- ✅ `TestAuthShutdown` - Verifies graceful shutdown (safe to call multiple times)
-- ✅ All existing auth tests pass
-- ✅ No race conditions detected
-
-### Impact
-- **Breaking Changes:** None (Shutdown is optional for backward compatibility)
-- **Performance:** Minimal - cleanup runs every 10 min, eviction is O(n) but only when cache is full
-- **Memory:** Bounded to ~10,000 entries (configurable)
-
-### Integration Notes
-Applications using Auth middleware should call `auth.Shutdown()` during graceful shutdown:
-
-```go
-// Example in main.go
-auth := middleware.NewAuth(authConfig)
-defer auth.Shutdown()
-```
+The authentication middleware has been removed from the runtime chain.
+Previous cache and cleanup notes for `internal/middleware/auth.go` no longer apply.
 
 ---
 
 ## Test Coverage
 
 ### New Test Files
-1. `/internal/middleware/resource_leak_fixes_test.go` - Tests for auth and privacy fixes
+1. `/internal/middleware/resource_leak_fixes_test.go` - Tests for privacy fixes
 2. `/internal/pauseads/pauseads_test.go` - Tests for pauseads cleanup
 
 ### Test Results
@@ -183,9 +126,6 @@ defer auth.Shutdown()
 
 ### Test Commands
 ```bash
-# Test auth fixes
-go test ./internal/middleware/... -run "TestAuthCacheSizeLimit|TestAuthPeriodicCleanup|TestAuthShutdown" -v
-
 # Test privacy fix
 go test ./internal/middleware/... -run "TestPrivacyRequestBodySizeLimit" -v
 

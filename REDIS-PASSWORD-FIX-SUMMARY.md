@@ -9,7 +9,7 @@
 Redis was running WITHOUT password protection:
 - Anyone with network access could connect to Redis
 - No authentication required for read/write operations  
-- Could expose cached session data, auction state, API keys
+- Could expose cached session data, auction state, credentials
 - Compliance violation (PCI-DSS, SOC 2 require auth)
 
 ### What Was Changed

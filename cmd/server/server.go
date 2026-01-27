@@ -299,18 +299,10 @@ func (s *Server) buildHandler(mux *http.ServeMux) http.Handler {
 	cors := middleware.NewCORS(middleware.DefaultCORSConfig())
 	security := middleware.NewSecurity(nil)
 	publisherAuth := middleware.NewPublisherAuth(middleware.DefaultPublisherAuthConfig())
-
-	// Build Auth config with conditional bypass
-	authConfig := middleware.DefaultAuthConfig()
-	if publisherAuth.IsEnabled() {
-		authConfig.BypassPaths = append(authConfig.BypassPaths, "/openrtb2/auction")
-	}
-	auth := middleware.NewAuth(authConfig)
 	sizeLimiter := middleware.NewSizeLimiter(middleware.DefaultSizeLimitConfig())
 	gzipMiddleware := middleware.NewGzip(middleware.DefaultGzipConfig())
 
 	// Wire up metrics
-	auth.SetMetrics(s.metrics)
 	s.rateLimiter.SetMetrics(s.metrics)
 
 	// Wire up stores
@@ -321,25 +313,22 @@ func (s *Server) buildHandler(mux *http.ServeMux) http.Handler {
 
 	// Wire up Redis
 	if s.redisClient != nil {
-		auth.SetRedisClient(s.redisClient)
 		publisherAuth.SetRedisClient(s.redisClient)
-		log.Info().Msg("Redis client set for auth middlewares")
+		log.Info().Msg("Redis client set for publisher auth middleware")
 	}
 
 	log.Info().
 		Bool("cors_enabled", true).
 		Bool("security_headers_enabled", security.GetConfig().Enabled).
-		Bool("auth_enabled", auth.IsEnabled()).
 		Bool("rate_limiting_enabled", s.rateLimiter != nil).
 		Msg("Middleware chain built")
 
-	// Build chain: CORS -> Security -> Logging -> Size Limit -> Auth -> PublisherAuth -> Rate Limit -> Metrics -> Gzip -> Handler
+	// Build chain: CORS -> Security -> Logging -> Size Limit -> PublisherAuth -> Rate Limit -> Metrics -> Gzip -> Handler
 	handler := http.Handler(mux)
 	handler = gzipMiddleware.Middleware(handler)
 	handler = s.metrics.Middleware(handler)
 	handler = s.rateLimiter.Middleware(handler)
 	handler = publisherAuth.Middleware(handler)
-	handler = auth.Middleware(handler)
 	handler = sizeLimiter.Middleware(handler)
 	handler = loggingMiddleware(handler)
 	handler = security.Middleware(handler)

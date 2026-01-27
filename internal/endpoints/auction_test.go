@@ -286,9 +286,9 @@ func TestAuctionHandler_DebugMode(t *testing.T) {
 	bidReq := validBidRequest()
 	body, _ := json.Marshal(bidReq)
 
-	// P2-1: Debug mode requires auth header
+	// P2-1: Debug mode requires publisher context
 	req := httptest.NewRequest("POST", "/openrtb2/auction?debug=1", bytes.NewReader(body))
-	req.Header.Set("X-API-Key", "test-key") // Add API key for debug access
+	req = req.WithContext(middleware.NewContextWithPublisherID(req.Context(), "pub-123"))
 	w := httptest.NewRecorder()
 
 	handler.ServeHTTP(w, req)
@@ -308,8 +308,8 @@ func TestAuctionHandler_DebugMode(t *testing.T) {
 	}
 }
 
-// P2-1: Test debug mode authentication requirements
-func TestAuctionHandler_DebugMode_RequiresAuth(t *testing.T) {
+// P2-1: Test debug mode publisher context requirements
+func TestAuctionHandler_DebugMode_RequiresPublisherContext(t *testing.T) {
 	registry := adapters.NewRegistry()
 	mock := &mockAdapter{bids: []*adapters.TypedBid{}}
 	registry.Register("testbidder", mock, adapters.BidderInfo{Enabled: true})
@@ -342,7 +342,7 @@ func TestAuctionHandler_DebugMode_RequiresAuth(t *testing.T) {
 	// (Ext may still be nil or empty since debug was disabled)
 }
 
-func TestAuctionHandler_DebugMode_WithAPIKey(t *testing.T) {
+func TestAuctionHandler_DebugMode_WithPublisherContext(t *testing.T) {
 	registry := adapters.NewRegistry()
 	ex := exchange.New(registry, &exchange.Config{
 		DefaultTimeout: 100 * time.Millisecond,
@@ -352,9 +352,9 @@ func TestAuctionHandler_DebugMode_WithAPIKey(t *testing.T) {
 	bidReq := validBidRequest()
 	body, _ := json.Marshal(bidReq)
 
-	// With X-API-Key header, debug should work
+	// With publisher context, debug should work
 	req := httptest.NewRequest("POST", "/openrtb2/auction?debug=1", bytes.NewReader(body))
-	req.Header.Set("X-API-Key", "test-api-key")
+	req = req.WithContext(middleware.NewContextWithPublisherID(req.Context(), "pub-123"))
 	w := httptest.NewRecorder()
 
 	handler.ServeHTTP(w, req)
@@ -364,7 +364,7 @@ func TestAuctionHandler_DebugMode_WithAPIKey(t *testing.T) {
 	}
 }
 
-func TestAuctionHandler_DebugMode_WithBearerToken(t *testing.T) {
+func TestAuctionHandler_DebugMode_IgnoresAuthorizationHeader(t *testing.T) {
 	registry := adapters.NewRegistry()
 	ex := exchange.New(registry, &exchange.Config{
 		DefaultTimeout: 100 * time.Millisecond,
@@ -374,7 +374,7 @@ func TestAuctionHandler_DebugMode_WithBearerToken(t *testing.T) {
 	bidReq := validBidRequest()
 	body, _ := json.Marshal(bidReq)
 
-	// With Authorization Bearer header, debug should work
+	// Authorization header alone should not enable debug
 	req := httptest.NewRequest("POST", "/openrtb2/auction?debug=1", bytes.NewReader(body))
 	req.Header.Set("Authorization", "Bearer test-token")
 	w := httptest.NewRecorder()

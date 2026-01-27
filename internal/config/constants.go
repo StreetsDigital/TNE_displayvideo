@@ -24,15 +24,6 @@ const (
 	CORSMaxAge = 86400
 )
 
-// Auth cache defaults
-const (
-	// AuthCacheTimeout is how long to cache valid API keys
-	AuthCacheTimeout = 60 * time.Second
-
-	// AuthNegativeCacheTimeout is how long to cache invalid API key results
-	AuthNegativeCacheTimeout = 10 * time.Second
-)
-
 // Rate limiting defaults
 const (
 	// DefaultRPS is the default requests per second limit

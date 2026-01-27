@@ -764,7 +764,6 @@ SIZE_LIMITER_MAX_BODY=10485760  # 10MB
 - Full requests only in DEBUG mode
 
 **Sensitive Data:**
-- API keys never logged
 - Database passwords masked
 - Redis auth tokens masked
 - Bidder credentials never logged

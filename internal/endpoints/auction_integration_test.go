@@ -13,6 +13,7 @@ import (
 
 	"github.com/thenexusengine/tne_springwire/internal/adapters"
 	"github.com/thenexusengine/tne_springwire/internal/exchange"
+	"github.com/thenexusengine/tne_springwire/internal/middleware"
 	"github.com/thenexusengine/tne_springwire/internal/openrtb"
 )
 
@@ -391,7 +392,7 @@ func TestAuctionIntegration_MixedBidderResults(t *testing.T) {
 	body, _ := json.Marshal(bidReq)
 
 	req := httptest.NewRequest("POST", "/openrtb2/auction", bytes.NewReader(body))
-	req.Header.Set("X-API-Key", "test-key") // Enable debug to see errors
+	req = req.WithContext(middleware.NewContextWithPublisherID(req.Context(), "pub-123"))
 	w := httptest.NewRecorder()
 
 	handler.ServeHTTP(w, req)
@@ -557,8 +558,8 @@ func TestAuctionIntegration_LargeRequest(t *testing.T) {
 	}
 }
 
-// TestAuctionIntegration_DebugModeWithAuth tests debug mode with authentication
-func TestAuctionIntegration_DebugModeWithAuth(t *testing.T) {
+// TestAuctionIntegration_DebugModeWithPublisherContext tests debug mode with publisher context
+func TestAuctionIntegration_DebugModeWithPublisherContext(t *testing.T) {
 	registry := adapters.NewRegistry()
 	registry.Register("testbidder", &mockSuccessfulAdapter{bidPrice: 1.50}, adapters.BidderInfo{
 		Enabled: true,
@@ -591,7 +592,7 @@ func TestAuctionIntegration_DebugModeWithAuth(t *testing.T) {
 	body, _ := json.Marshal(bidReq)
 
 	req := httptest.NewRequest("POST", "/openrtb2/auction?debug=1", bytes.NewReader(body))
-	req.Header.Set("X-API-Key", "test-key")
+	req = req.WithContext(middleware.NewContextWithPublisherID(req.Context(), "pub-123"))
 	w := httptest.NewRecorder()
 
 	handler.ServeHTTP(w, req)

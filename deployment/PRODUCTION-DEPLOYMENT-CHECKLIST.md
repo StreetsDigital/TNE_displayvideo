@@ -31,13 +31,6 @@
   # Add to .env.production: JWT_SECRET=<generated-secret>
   ```
 
-- [ ] **API keys rotated** (all CHANGE_ME values replaced)
-  ```bash
-  # Check for any remaining CHANGE_ME values
-  grep -r "CHANGE_ME" .env.production
-  # Should return nothing
-  ```
-
 - [ ] **HTTPS/TLS certificates configured** (Let's Encrypt or commercial)
   ```bash
   # Check certificates exist
