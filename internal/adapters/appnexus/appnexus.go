@@ -111,6 +111,7 @@ func Info() adapters.BidderInfo {
 					adapters.BidTypeBanner,
 					adapters.BidTypeVideo,
 					adapters.BidTypeNative,
+					adapters.BidTypeAudio,
 				},
 			},
 			App: &adapters.PlatformInfo{
@@ -118,6 +119,7 @@ func Info() adapters.BidderInfo {
 					adapters.BidTypeBanner,
 					adapters.BidTypeVideo,
 					adapters.BidTypeNative,
+					adapters.BidTypeAudio,
 				},
 			},
 		},

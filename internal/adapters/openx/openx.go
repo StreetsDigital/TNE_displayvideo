@@ -80,8 +80,8 @@ func Info() adapters.BidderInfo {
 		Endpoint:    defaultEndpoint,
 		Maintainer:  &adapters.MaintainerInfo{Email: "prebid@openx.com"},
 		Capabilities: &adapters.CapabilitiesInfo{
-			Site: &adapters.PlatformInfo{MediaTypes: []adapters.BidType{adapters.BidTypeBanner, adapters.BidTypeVideo}},
-			App:  &adapters.PlatformInfo{MediaTypes: []adapters.BidType{adapters.BidTypeBanner, adapters.BidTypeVideo}},
+			Site: &adapters.PlatformInfo{MediaTypes: []adapters.BidType{adapters.BidTypeBanner, adapters.BidTypeVideo, adapters.BidTypeNative}},
+			App:  &adapters.PlatformInfo{MediaTypes: []adapters.BidType{adapters.BidTypeBanner, adapters.BidTypeVideo, adapters.BidTypeNative}},
 		},
 	}
 }

@@ -114,12 +114,14 @@ func Info() adapters.BidderInfo {
 				MediaTypes: []adapters.BidType{
 					adapters.BidTypeBanner,
 					adapters.BidTypeVideo,
+					adapters.BidTypeNative,
 				},
 			},
 			App: &adapters.PlatformInfo{
 				MediaTypes: []adapters.BidType{
 					adapters.BidTypeBanner,
 					adapters.BidTypeVideo,
+					adapters.BidTypeNative,
 				},
 			},
 		},

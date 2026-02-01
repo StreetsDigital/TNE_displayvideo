@@ -16,6 +16,15 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
+// Context key for storing publisher ID (raw string for cross-package compatibility)
+const publisherIDKey = "publisher_id"
+
+// RedisClient interface for publisher validation
+type RedisClient interface {
+	HGet(ctx context.Context, key, field string) (string, error)
+	Ping(ctx context.Context) error
+}
+
 // PublisherAuthConfig holds publisher authentication configuration
 type PublisherAuthConfig struct {
 	Enabled           bool              // Enable publisher validation

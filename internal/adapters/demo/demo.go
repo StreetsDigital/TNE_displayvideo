@@ -112,32 +112,45 @@ func (a *Adapter) generateMockResponse(request *openrtb.BidRequest) *openrtb.Bid
 		// Generate random CPM within range
 		cpm := a.minCPM + rng.Float64()*(a.maxCPM-a.minCPM)
 
-		// Determine ad size
-		var width, height int64
-		if imp.Banner != nil {
-			width = int64(imp.Banner.W)
-			height = int64(imp.Banner.H)
-			if width == 0 && len(imp.Banner.Format) > 0 {
-				width = int64(imp.Banner.Format[0].W)
-				height = int64(imp.Banner.Format[0].H)
-			}
-		}
-		if width == 0 {
-			width = 300
-		}
-		if height == 0 {
-			height = 250
-		}
-
 		bid := openrtb.Bid{
 			ID:      fmt.Sprintf("demo-bid-%s-%d", imp.ID, time.Now().UnixNano()),
 			ImpID:   imp.ID,
 			Price:   cpm,
-			W:       int(width),
-			H:       int(height),
-			AdM:     a.generateMockCreative(int(width), int(height), cpm),
 			CRID:    fmt.Sprintf("demo-creative-%d", rng.Intn(1000)),
 			ADomain: []string{"demo-advertiser.example.com"},
+		}
+
+		// Set dimensions and creative based on media type
+		if imp.Banner != nil {
+			width := imp.Banner.W
+			height := imp.Banner.H
+			if width == 0 && len(imp.Banner.Format) > 0 {
+				width = imp.Banner.Format[0].W
+				height = imp.Banner.Format[0].H
+			}
+			if width == 0 {
+				width = 300
+			}
+			if height == 0 {
+				height = 250
+			}
+			bid.W = width
+			bid.H = height
+			bid.AdM = a.generateMockCreative(width, height, cpm)
+		} else if imp.Video != nil {
+			bid.W = imp.Video.W
+			bid.H = imp.Video.H
+			if bid.W == 0 {
+				bid.W = 640
+			}
+			if bid.H == 0 {
+				bid.H = 480
+			}
+			bid.AdM = fmt.Sprintf(`<VAST version="3.0"><Ad><InLine><AdSystem>Demo</AdSystem><AdTitle>Demo Video Ad $%.2f CPM</AdTitle><Creatives></Creatives></InLine></Ad></VAST>`, cpm)
+		} else if imp.Native != nil {
+			bid.AdM = `{"ver":"1.1","assets":[{"id":1,"title":{"text":"Demo Native Ad"}},{"id":2,"data":{"value":"Demo Advertiser"}}]}`
+		} else if imp.Audio != nil {
+			bid.AdM = fmt.Sprintf(`<DAAST version="1.0"><Ad><InLine><AdSystem>Demo</AdSystem><AdTitle>Demo Audio Ad $%.2f CPM</AdTitle><Creatives></Creatives></InLine></Ad></DAAST>`, cpm)
 		}
 
 		bids = append(bids, bid)
@@ -178,8 +191,8 @@ func Info() adapters.BidderInfo {
 		ModifyingVastXmlAllowed: false,
 		GVLVendorID:             0, // No GDPR vendor ID for demo adapter
 		Capabilities: &adapters.CapabilitiesInfo{
-			App:  &adapters.PlatformInfo{MediaTypes: []adapters.BidType{adapters.BidTypeBanner, adapters.BidTypeVideo}},
-			Site: &adapters.PlatformInfo{MediaTypes: []adapters.BidType{adapters.BidTypeBanner, adapters.BidTypeVideo}},
+			App:  &adapters.PlatformInfo{MediaTypes: []adapters.BidType{adapters.BidTypeBanner, adapters.BidTypeVideo, adapters.BidTypeNative, adapters.BidTypeAudio}},
+			Site: &adapters.PlatformInfo{MediaTypes: []adapters.BidType{adapters.BidTypeBanner, adapters.BidTypeVideo, adapters.BidTypeNative, adapters.BidTypeAudio}},
 		},
 		DemandType: adapters.DemandTypePlatform, // Platform demand (obfuscated as "thenexusengine")
 	}

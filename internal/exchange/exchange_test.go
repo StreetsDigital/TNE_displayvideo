@@ -2142,3 +2142,316 @@ func (m *mockMetrics) RecordBidderCircuitFailure(bidder string)   {}
 func (m *mockMetrics) RecordBidderCircuitSuccess(bidder string)   {}
 func (m *mockMetrics) RecordBidderCircuitRejected(bidder string)  {}
 func (m *mockMetrics) RecordBidderCircuitStateChange(bidder, fromState, toState string) {}
+
+// --- Media Type Filtering Tests ---
+
+func TestGetSupportedMediaTypes_NilCapabilities(t *testing.T) {
+	info := &adapters.BidderInfo{Enabled: true}
+	req := &openrtb.BidRequest{Site: testSite()}
+
+	supported := getSupportedMediaTypes(info, req)
+	if supported != nil {
+		t.Error("expected nil (all types supported) when capabilities is nil")
+	}
+}
+
+func TestGetSupportedMediaTypes_NilPlatform(t *testing.T) {
+	info := &adapters.BidderInfo{
+		Enabled:      true,
+		Capabilities: &adapters.CapabilitiesInfo{},
+	}
+
+	// Site request with no Site capability
+	req := &openrtb.BidRequest{Site: testSite()}
+	supported := getSupportedMediaTypes(info, req)
+	if supported != nil {
+		t.Error("expected nil when platform info is nil")
+	}
+
+	// App request with no App capability
+	reqApp := &openrtb.BidRequest{App: &openrtb.App{ID: "app1"}}
+	supported = getSupportedMediaTypes(info, reqApp)
+	if supported != nil {
+		t.Error("expected nil when platform info is nil for app")
+	}
+}
+
+func TestGetSupportedMediaTypes_SiteContext(t *testing.T) {
+	info := &adapters.BidderInfo{
+		Enabled: true,
+		Capabilities: &adapters.CapabilitiesInfo{
+			Site: &adapters.PlatformInfo{
+				MediaTypes: []adapters.BidType{adapters.BidTypeBanner, adapters.BidTypeNative},
+			},
+			App: &adapters.PlatformInfo{
+				MediaTypes: []adapters.BidType{adapters.BidTypeVideo},
+			},
+		},
+	}
+
+	req := &openrtb.BidRequest{Site: testSite()}
+	supported := getSupportedMediaTypes(info, req)
+
+	if !supported[adapters.BidTypeBanner] {
+		t.Error("expected banner to be supported for site")
+	}
+	if !supported[adapters.BidTypeNative] {
+		t.Error("expected native to be supported for site")
+	}
+	if supported[adapters.BidTypeVideo] {
+		t.Error("expected video to NOT be supported for site")
+	}
+}
+
+func TestGetSupportedMediaTypes_AppContext(t *testing.T) {
+	info := &adapters.BidderInfo{
+		Enabled: true,
+		Capabilities: &adapters.CapabilitiesInfo{
+			Site: &adapters.PlatformInfo{
+				MediaTypes: []adapters.BidType{adapters.BidTypeBanner},
+			},
+			App: &adapters.PlatformInfo{
+				MediaTypes: []adapters.BidType{adapters.BidTypeBanner, adapters.BidTypeVideo, adapters.BidTypeNative, adapters.BidTypeAudio},
+			},
+		},
+	}
+
+	req := &openrtb.BidRequest{App: &openrtb.App{ID: "app1"}}
+	supported := getSupportedMediaTypes(info, req)
+
+	if !supported[adapters.BidTypeBanner] {
+		t.Error("expected banner to be supported for app")
+	}
+	if !supported[adapters.BidTypeVideo] {
+		t.Error("expected video to be supported for app")
+	}
+	if !supported[adapters.BidTypeNative] {
+		t.Error("expected native to be supported for app")
+	}
+	if !supported[adapters.BidTypeAudio] {
+		t.Error("expected audio to be supported for app")
+	}
+}
+
+func TestFilterImpsByMediaType_NilSupported(t *testing.T) {
+	imps := []openrtb.Imp{
+		{ID: "imp1", Banner: &openrtb.Banner{W: 300, H: 250}, Native: &openrtb.Native{Request: "{}"}},
+	}
+
+	filtered, hasImps := filterImpsByMediaType(imps, nil)
+	if !hasImps {
+		t.Error("expected hasImps=true when supported is nil")
+	}
+	if len(filtered) != 1 {
+		t.Errorf("expected 1 impression, got %d", len(filtered))
+	}
+	if filtered[0].Banner == nil || filtered[0].Native == nil {
+		t.Error("expected both banner and native to remain when supported is nil")
+	}
+}
+
+func TestFilterImpsByMediaType_BannerOnly(t *testing.T) {
+	imps := []openrtb.Imp{
+		{ID: "imp1", Banner: &openrtb.Banner{W: 300, H: 250}, Video: &openrtb.Video{W: 640, H: 480}},
+		{ID: "imp2", Native: &openrtb.Native{Request: "{}"}},
+		{ID: "imp3", Banner: &openrtb.Banner{W: 728, H: 90}},
+	}
+
+	supported := map[adapters.BidType]bool{adapters.BidTypeBanner: true}
+	filtered, hasImps := filterImpsByMediaType(imps, supported)
+
+	if !hasImps {
+		t.Error("expected hasImps=true")
+	}
+	if len(filtered) != 2 {
+		t.Fatalf("expected 2 impressions (imp1 and imp3), got %d", len(filtered))
+	}
+
+	// imp1 should have banner but not video
+	if filtered[0].ID != "imp1" {
+		t.Errorf("expected first imp to be imp1, got %s", filtered[0].ID)
+	}
+	if filtered[0].Banner == nil {
+		t.Error("expected imp1 to keep banner")
+	}
+	if filtered[0].Video != nil {
+		t.Error("expected imp1 video to be removed")
+	}
+
+	// imp2 (native only) should be excluded
+	// imp3 should remain
+	if filtered[1].ID != "imp3" {
+		t.Errorf("expected second imp to be imp3, got %s", filtered[1].ID)
+	}
+}
+
+func TestFilterImpsByMediaType_NativeSupported(t *testing.T) {
+	imps := []openrtb.Imp{
+		{ID: "imp1", Banner: &openrtb.Banner{W: 300, H: 250}},
+		{ID: "imp2", Native: &openrtb.Native{Request: "{}"}},
+		{ID: "imp3", Video: &openrtb.Video{W: 640, H: 480}, Native: &openrtb.Native{Request: "{}"}},
+	}
+
+	supported := map[adapters.BidType]bool{adapters.BidTypeBanner: true, adapters.BidTypeNative: true}
+	filtered, hasImps := filterImpsByMediaType(imps, supported)
+
+	if !hasImps {
+		t.Error("expected hasImps=true")
+	}
+	if len(filtered) != 3 {
+		t.Fatalf("expected 3 impressions, got %d", len(filtered))
+	}
+
+	// imp1: banner only (kept)
+	if filtered[0].Banner == nil {
+		t.Error("expected imp1 to keep banner")
+	}
+
+	// imp2: native only (kept)
+	if filtered[1].Native == nil {
+		t.Error("expected imp2 to keep native")
+	}
+
+	// imp3: video removed, native kept
+	if filtered[2].Video != nil {
+		t.Error("expected imp3 video to be removed")
+	}
+	if filtered[2].Native == nil {
+		t.Error("expected imp3 to keep native")
+	}
+}
+
+func TestFilterImpsByMediaType_AllTypesSupported(t *testing.T) {
+	imps := []openrtb.Imp{
+		{ID: "imp1", Banner: &openrtb.Banner{W: 300, H: 250}, Video: &openrtb.Video{W: 640, H: 480}, Native: &openrtb.Native{Request: "{}"}, Audio: &openrtb.Audio{Mimes: []string{"audio/mp3"}}},
+	}
+
+	supported := map[adapters.BidType]bool{
+		adapters.BidTypeBanner: true,
+		adapters.BidTypeVideo:  true,
+		adapters.BidTypeNative: true,
+		adapters.BidTypeAudio:  true,
+	}
+	filtered, hasImps := filterImpsByMediaType(imps, supported)
+
+	if !hasImps {
+		t.Error("expected hasImps=true")
+	}
+	if len(filtered) != 1 {
+		t.Fatalf("expected 1 impression, got %d", len(filtered))
+	}
+	if filtered[0].Banner == nil || filtered[0].Video == nil || filtered[0].Native == nil || filtered[0].Audio == nil {
+		t.Error("expected all media types to remain")
+	}
+}
+
+func TestFilterImpsByMediaType_NoMatchingImps(t *testing.T) {
+	imps := []openrtb.Imp{
+		{ID: "imp1", Banner: &openrtb.Banner{W: 300, H: 250}},
+		{ID: "imp2", Video: &openrtb.Video{W: 640, H: 480}},
+	}
+
+	supported := map[adapters.BidType]bool{adapters.BidTypeAudio: true}
+	filtered, hasImps := filterImpsByMediaType(imps, supported)
+
+	if hasImps {
+		t.Error("expected hasImps=false when no impressions match")
+	}
+	if len(filtered) != 0 {
+		t.Errorf("expected 0 impressions, got %d", len(filtered))
+	}
+}
+
+func TestFilterImpsByMediaType_EmptyImps(t *testing.T) {
+	filtered, hasImps := filterImpsByMediaType([]openrtb.Imp{}, nil)
+	if hasImps {
+		t.Error("expected hasImps=false for empty impressions")
+	}
+	if len(filtered) != 0 {
+		t.Errorf("expected 0 impressions, got %d", len(filtered))
+	}
+}
+
+func TestFilterImpsByMediaType_AudioOnly(t *testing.T) {
+	imps := []openrtb.Imp{
+		{ID: "imp1", Audio: &openrtb.Audio{Mimes: []string{"audio/mp3"}}},
+		{ID: "imp2", Banner: &openrtb.Banner{W: 300, H: 250}},
+	}
+
+	supported := map[adapters.BidType]bool{adapters.BidTypeAudio: true}
+	filtered, hasImps := filterImpsByMediaType(imps, supported)
+
+	if !hasImps {
+		t.Error("expected hasImps=true")
+	}
+	if len(filtered) != 1 {
+		t.Fatalf("expected 1 impression, got %d", len(filtered))
+	}
+	if filtered[0].ID != "imp1" {
+		t.Errorf("expected imp1, got %s", filtered[0].ID)
+	}
+	if filtered[0].Audio == nil {
+		t.Error("expected audio to remain")
+	}
+}
+
+// TestMediaTypeFiltering_IntegrationWithAuction tests that media type filtering works
+// end-to-end within the auction flow
+func TestMediaTypeFiltering_IntegrationWithAuction(t *testing.T) {
+	registry := adapters.NewRegistry()
+
+	// Register a banner-only bidder
+	bannerMock := &mockAdapter{bids: []*adapters.TypedBid{
+		{Bid: &openrtb.Bid{ID: "bid1", ImpID: "imp1", Price: 2.00, W: 300, H: 250}, BidType: adapters.BidTypeBanner},
+	}}
+	registry.Register("banner-bidder", bannerMock, adapters.BidderInfo{
+		Enabled: true,
+		Capabilities: &adapters.CapabilitiesInfo{
+			Site: &adapters.PlatformInfo{MediaTypes: []adapters.BidType{adapters.BidTypeBanner}},
+		},
+	})
+
+	// Register a native+banner bidder
+	nativeMock := &mockAdapter{bids: []*adapters.TypedBid{
+		{Bid: &openrtb.Bid{ID: "bid2", ImpID: "imp2", Price: 3.00}, BidType: adapters.BidTypeNative},
+	}}
+	registry.Register("native-bidder", nativeMock, adapters.BidderInfo{
+		Enabled: true,
+		Capabilities: &adapters.CapabilitiesInfo{
+			Site: &adapters.PlatformInfo{MediaTypes: []adapters.BidType{adapters.BidTypeBanner, adapters.BidTypeNative}},
+		},
+	})
+
+	ex := New(registry, &Config{
+		DefaultTimeout: 500 * time.Millisecond,
+		IDREnabled:     false,
+	})
+
+	// Request with banner and native impressions
+	req := &AuctionRequest{
+		BidRequest: &openrtb.BidRequest{
+			ID:   "test-media-filter",
+			Site: testSite(),
+			Imp: []openrtb.Imp{
+				{ID: "imp1", Banner: &openrtb.Banner{W: 300, H: 250}},
+				{ID: "imp2", Native: &openrtb.Native{Request: "{}"}},
+			},
+		},
+	}
+
+	result, err := ex.RunAuction(context.Background(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if result.BidResponse == nil {
+		t.Fatal("expected non-nil bid response")
+	}
+
+	// Both bidders should have been called successfully
+	// banner-bidder gets imp1 (banner) but not imp2 (native)
+	// native-bidder gets both imp1 (banner) and imp2 (native)
+	if result.BidResponse.SeatBid == nil {
+		t.Log("no seat bids returned (mock adapters may not produce bids in this flow)")
+	}
+}

@@ -155,13 +155,10 @@ func (s *Server) initMiddleware() {
 	// Initialize PublisherAuth first to check if it's enabled
 	publisherAuth := middleware.NewPublisherAuth(middleware.DefaultPublisherAuthConfig())
 
-	// Build Auth config with conditional bypass for /openrtb2/auction
-	authConfig := middleware.DefaultAuthConfig()
 	if publisherAuth.IsEnabled() {
-		authConfig.BypassPaths = append(authConfig.BypassPaths, "/openrtb2/auction")
-		log.Info().Msg("PublisherAuth enabled - /openrtb2/auction bypasses general Auth")
+		log.Info().Msg("PublisherAuth enabled for /openrtb2/auction")
 	} else {
-		log.Warn().Msg("PublisherAuth disabled - /openrtb2/auction requires API key auth")
+		log.Warn().Msg("PublisherAuth disabled - requests not validated")
 	}
 
 	// Store rate limiter for graceful shutdown

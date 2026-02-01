@@ -1421,6 +1421,8 @@ func (e *Exchange) RunAuction(ctx context.Context, req *AuctionRequest) (*Auctio
 			mediaType = "video"
 		} else if imp.Native != nil {
 			mediaType = "native"
+		} else if imp.Audio != nil {
+			mediaType = "audio"
 		}
 	}
 	if req.BidRequest.Site != nil && req.BidRequest.Site.Publisher != nil {
@@ -1786,6 +1788,20 @@ func (e *Exchange) callBiddersWithFPD(ctx context.Context, req *openrtb.BidReque
 
 				// Clone request and apply bidder-specific FPD
 				bidderReq := e.cloneRequestWithFPD(req, code, bidderFPD)
+
+				// Filter impressions by bidder's supported media types
+				supportedTypes := getSupportedMediaTypes(&awi.Info, req)
+				if supportedTypes != nil {
+					filteredImps, hasImps := filterImpsByMediaType(bidderReq.Imp, supportedTypes)
+					if !hasImps {
+						// No impressions match this bidder's media types - skip
+						results.Store(code, &BidderResult{
+							BidderCode: code,
+						})
+						return
+					}
+					bidderReq.Imp = filteredImps
+				}
 
 				result := e.callBidder(ctx, bidderReq, code, awi.Adapter, timeout)
 
@@ -2387,6 +2403,69 @@ func formatPriceBucket(price float64) string {
 		bucket = 20
 	}
 	return fmt.Sprintf("%.2f", bucket)
+}
+
+// getSupportedMediaTypes returns the set of media types a bidder supports for the given request context.
+// It checks the bidder's capabilities for Site or App depending on the request.
+// If no capabilities are declared, all media types are assumed supported (backward compatible).
+func getSupportedMediaTypes(info *adapters.BidderInfo, req *openrtb.BidRequest) map[adapters.BidType]bool {
+	if info.Capabilities == nil {
+		return nil // nil means all types supported
+	}
+
+	var platform *adapters.PlatformInfo
+	if req.App != nil {
+		platform = info.Capabilities.App
+	} else {
+		platform = info.Capabilities.Site
+	}
+
+	if platform == nil || len(platform.MediaTypes) == 0 {
+		return nil // nil means all types supported
+	}
+
+	supported := make(map[adapters.BidType]bool, len(platform.MediaTypes))
+	for _, mt := range platform.MediaTypes {
+		supported[mt] = true
+	}
+	return supported
+}
+
+// filterImpsByMediaType filters impressions to only include media types the bidder supports.
+// For each impression, unsupported media type objects are removed. If an impression has no
+// remaining media types after filtering, it is excluded entirely.
+// Returns the filtered impressions and whether any impressions remain.
+func filterImpsByMediaType(imps []openrtb.Imp, supported map[adapters.BidType]bool) ([]openrtb.Imp, bool) {
+	// nil supported map means all types are supported - no filtering needed
+	if supported == nil {
+		return imps, len(imps) > 0
+	}
+
+	filtered := make([]openrtb.Imp, 0, len(imps))
+	for _, imp := range imps {
+		impCopy := imp
+
+		// Remove unsupported media types from the impression copy
+		if !supported[adapters.BidTypeBanner] {
+			impCopy.Banner = nil
+		}
+		if !supported[adapters.BidTypeVideo] {
+			impCopy.Video = nil
+		}
+		if !supported[adapters.BidTypeAudio] {
+			impCopy.Audio = nil
+		}
+		if !supported[adapters.BidTypeNative] {
+			impCopy.Native = nil
+		}
+
+		// Only include impression if it still has at least one media type
+		if impCopy.Banner != nil || impCopy.Video != nil || impCopy.Audio != nil || impCopy.Native != nil {
+			filtered = append(filtered, impCopy)
+		}
+	}
+
+	return filtered, len(filtered) > 0
 }
 
 // buildMinimalIDRRequest extracts only essential fields for IDR partner selection
