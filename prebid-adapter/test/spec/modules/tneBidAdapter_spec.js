@@ -479,7 +479,7 @@ describe('TNE Bid Adapter', function () {
       const syncs = spec.getUserSyncs({ iframeEnabled: true }, [], null, null);
       expect(syncs).to.have.lengthOf(1);
       expect(syncs[0].type).to.equal('iframe');
-      expect(syncs[0].url).to.contain('catalyst.springwire.ai/cookie_sync');
+      expect(syncs[0].url).to.contain('catalyst.springwire.ai/usersync/iframe');
     });
 
     it('should return a pixel sync when pixelEnabled is true', function () {
@@ -487,6 +487,11 @@ describe('TNE Bid Adapter', function () {
       expect(syncs).to.have.lengthOf(1);
       expect(syncs[0].type).to.equal('image');
       expect(syncs[0].url).to.contain('catalyst.springwire.ai/setuid');
+    });
+
+    it('should include bidder code in pixel sync URL', function () {
+      const syncs = spec.getUserSyncs({ pixelEnabled: true }, [], null, null);
+      expect(syncs[0].url).to.contain('bidder=tne');
     });
 
     it('should return both syncs when both are enabled', function () {
@@ -497,11 +502,23 @@ describe('TNE Bid Adapter', function () {
         null
       );
       expect(syncs).to.have.lengthOf(2);
+      expect(syncs[0].type).to.equal('iframe');
+      expect(syncs[1].type).to.equal('image');
     });
 
     it('should return empty array when no sync options are enabled', function () {
       const syncs = spec.getUserSyncs(
         { iframeEnabled: false, pixelEnabled: false },
+        [],
+        null,
+        null
+      );
+      expect(syncs).to.have.lengthOf(0);
+    });
+
+    it('should return empty array when COPPA applies', function () {
+      const syncs = spec.getUserSyncs(
+        { iframeEnabled: true, pixelEnabled: true, coppa: true },
         [],
         null,
         null
@@ -566,6 +583,19 @@ describe('TNE Bid Adapter', function () {
       expect(url).to.contain('us_privacy=');
       expect(url).to.contain('gpp=');
       expect(url).to.contain('gpp_sid=');
+    });
+
+    it('should include consent params in pixel sync URL', function () {
+      const syncs = spec.getUserSyncs(
+        { pixelEnabled: true },
+        [],
+        gdprConsent,
+        uspConsent
+      );
+      const url = syncs[0].url;
+      expect(url).to.contain('bidder=tne');
+      expect(url).to.contain('gdpr=1');
+      expect(url).to.contain('us_privacy=');
     });
   });
 

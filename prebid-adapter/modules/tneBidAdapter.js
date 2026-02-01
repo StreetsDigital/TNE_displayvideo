@@ -10,8 +10,8 @@ import { deepSetValue, deepAccess, logWarn } from '../src/utils.js';
 
 const BIDDER_CODE = 'tne';
 const ENDPOINT_URL = 'https://catalyst.springwire.ai/openrtb2/auction';
-const COOKIE_SYNC_URL = 'https://catalyst.springwire.ai/cookie_sync';
-const USERSYNC_URL = 'https://catalyst.springwire.ai/setuid';
+const USERSYNC_IFRAME_URL = 'https://catalyst.springwire.ai/usersync/iframe';
+const USERSYNC_PIXEL_URL = 'https://catalyst.springwire.ai/setuid';
 const DEFAULT_CURRENCY = 'USD';
 const DEFAULT_TTL = 300;
 const ADAPTER_VERSION = '1.0.0';
@@ -170,7 +170,8 @@ export const spec = {
 
   /**
    * Register user sync pixels.
-   * Supports both iframe and image syncs with GDPR/USP consent forwarding.
+   * Supports both iframe and image syncs with GDPR/USP/GPP consent forwarding.
+   * Skips syncing entirely under COPPA.
    *
    * @param {object} syncOptions
    * @param {Array} serverResponses
@@ -181,9 +182,19 @@ export const spec = {
    */
   getUserSyncs(syncOptions, serverResponses, gdprConsent, uspConsent, gppConsent) {
     const syncs = [];
+
+    if (!syncOptions.iframeEnabled && !syncOptions.pixelEnabled) {
+      return syncs;
+    }
+
+    // COPPA: do not fire any syncs for child-directed content
+    if (syncOptions.coppa) {
+      return syncs;
+    }
+
     const params = [];
 
-    // Append GDPR consent parameters
+    // GDPR consent
     if (gdprConsent) {
       params.push(`gdpr=${gdprConsent.gdprApplies ? 1 : 0}`);
       if (gdprConsent.consentString) {
@@ -191,12 +202,12 @@ export const spec = {
       }
     }
 
-    // Append USP/CCPA consent
+    // USP/CCPA consent
     if (uspConsent) {
       params.push(`us_privacy=${encodeURIComponent(uspConsent)}`);
     }
 
-    // Append GPP consent
+    // GPP consent
     if (gppConsent) {
       if (gppConsent.gppString) {
         params.push(`gpp=${encodeURIComponent(gppConsent.gppString)}`);
@@ -208,17 +219,21 @@ export const spec = {
 
     const queryString = params.length > 0 ? `?${params.join('&')}` : '';
 
+    // Iframe sync — loads a page on the exchange domain that handles
+    // multi-bidder cookie syncing (exchange must serve HTML at this URL)
     if (syncOptions.iframeEnabled) {
       syncs.push({
         type: 'iframe',
-        url: `${COOKIE_SYNC_URL}${queryString}`,
+        url: `${USERSYNC_IFRAME_URL}${queryString}`,
       });
     }
 
+    // Pixel sync — fires the setuid endpoint to establish a cookie
+    // on the exchange domain for this bidder
     if (syncOptions.pixelEnabled) {
       syncs.push({
         type: 'image',
-        url: `${USERSYNC_URL}${queryString}`,
+        url: `${USERSYNC_PIXEL_URL}?bidder=${BIDDER_CODE}${params.length > 0 ? '&' + params.join('&') : ''}`,
       });
     }
 
