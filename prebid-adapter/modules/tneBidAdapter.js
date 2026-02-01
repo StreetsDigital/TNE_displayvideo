@@ -105,6 +105,7 @@ const converter = ortbConverter({
 
 export const spec = {
   code: BIDDER_CODE,
+  gvlid: 1494,
   supportedMediaTypes: [BANNER, VIDEO],
 
   /**
