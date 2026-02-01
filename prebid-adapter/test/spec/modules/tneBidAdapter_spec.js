@@ -611,5 +611,67 @@ describe('TNE Bid Adapter', function () {
     it('should support banner and video media types', function () {
       expect(spec.supportedMediaTypes).to.deep.equal([BANNER, VIDEO]);
     });
+
+    it('should have GVL ID 1494', function () {
+      expect(spec.gvlid).to.equal(1494);
+    });
+
+    it('should declare tneCatalyst alias', function () {
+      expect(spec.aliases).to.be.an('array');
+      const codes = spec.aliases.map((a) => a.code || a);
+      expect(codes).to.include('tneCatalyst');
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Alias / custom endpoint
+  // ---------------------------------------------------------------------------
+
+  describe('alias with custom endpoint', function () {
+    const CUSTOM_HOST = 'https://exchange.customdomain.com';
+
+    it('should use the default endpoint when no endpoint param is provided', function () {
+      const bidRequests = [makeBannerBidRequest()];
+      const bidderRequest = makeBidderRequest();
+      const requests = spec.buildRequests(bidRequests, bidderRequest);
+
+      expect(requests[0].url).to.equal(ENDPOINT);
+    });
+
+    it('should use a custom endpoint when provided in params', function () {
+      const bidRequests = [
+        makeBannerBidRequest({
+          params: { publisherId: 'pub-custom', endpoint: CUSTOM_HOST },
+        }),
+      ];
+      const bidderRequest = makeBidderRequest();
+      const requests = spec.buildRequests(bidRequests, bidderRequest);
+
+      expect(requests[0].url).to.equal(`${CUSTOM_HOST}/openrtb2/auction`);
+    });
+
+    it('should strip trailing slash from custom endpoint', function () {
+      const bidRequests = [
+        makeBannerBidRequest({
+          params: { publisherId: 'pub-custom', endpoint: `${CUSTOM_HOST}/` },
+        }),
+      ];
+      const bidderRequest = makeBidderRequest();
+      const requests = spec.buildRequests(bidRequests, bidderRequest);
+
+      expect(requests[0].url).to.equal(`${CUSTOM_HOST}/openrtb2/auction`);
+    });
+
+    it('should still set publisher ID on custom endpoint requests', function () {
+      const bidRequests = [
+        makeBannerBidRequest({
+          params: { publisherId: 'pub-custom', endpoint: CUSTOM_HOST },
+        }),
+      ];
+      const bidderRequest = makeBidderRequest();
+      const requests = spec.buildRequests(bidRequests, bidderRequest);
+
+      expect(requests[0].data.site.publisher.id).to.equal('pub-custom');
+    });
   });
 });

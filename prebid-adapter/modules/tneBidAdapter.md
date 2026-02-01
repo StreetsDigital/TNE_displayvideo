@@ -19,6 +19,7 @@ Supports banner and video (instream/outstream) media types.
 | `placementId` | optional | Placement identifier for reporting granularity | `'sidebar-300x250'` | `string` |
 | `bidFloor` | optional | Minimum CPM bid floor in USD | `0.50` | `number` |
 | `bidFloorCur` | optional | Currency for bidFloor (defaults to `'USD'`) | `'USD'` | `string` |
+| `endpoint` | optional | Override exchange base URL (for self-hosted instances via `tneCatalyst` alias) | `'https://exchange.yourdomain.com'` | `string` |
 | `custom` | optional | Custom key-value targeting passed to the exchange | `{ "section": "sports" }` | `object` |
 
 # Banner Ad Unit Example
@@ -127,6 +128,33 @@ var adUnits = [
           publisherId: 'pub-123',
           placementId: 'multi-sidebar',
           bidFloor: 1.5,
+        },
+      },
+    ],
+  },
+];
+```
+
+# Self-Hosted / Alias Example (`tneCatalyst`)
+
+Operators running their own TNE Catalyst exchange instance use the `tneCatalyst` alias
+with a custom `endpoint` pointing to their server:
+
+```javascript
+var adUnits = [
+  {
+    code: 'banner-div',
+    mediaTypes: {
+      banner: {
+        sizes: [[300, 250], [728, 90]],
+      },
+    },
+    bids: [
+      {
+        bidder: 'tneCatalyst',
+        params: {
+          publisherId: 'pub-456',
+          endpoint: 'https://exchange.yourdomain.com',
         },
       },
     ],

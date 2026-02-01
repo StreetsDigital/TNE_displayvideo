@@ -9,12 +9,26 @@ import { deepSetValue, deepAccess, logWarn } from '../src/utils.js';
  */
 
 const BIDDER_CODE = 'tne';
-const ENDPOINT_URL = 'https://catalyst.springwire.ai/openrtb2/auction';
-const USERSYNC_IFRAME_URL = 'https://catalyst.springwire.ai/usersync/iframe';
-const USERSYNC_PIXEL_URL = 'https://catalyst.springwire.ai/setuid';
+const DEFAULT_ENDPOINT = 'https://catalyst.springwire.ai';
+const AUCTION_PATH = '/openrtb2/auction';
+const USERSYNC_IFRAME_PATH = '/usersync/iframe';
+const USERSYNC_PIXEL_PATH = '/setuid';
 const DEFAULT_CURRENCY = 'USD';
 const DEFAULT_TTL = 300;
 const ADAPTER_VERSION = '1.0.0';
+
+/**
+ * Resolve the base URL for this request.
+ * Alias operators pass their own endpoint; TNE publishers use the default.
+ */
+function getBaseUrl(bidRequests) {
+  const endpoint = deepAccess(bidRequests, '0.params.endpoint');
+  if (endpoint) {
+    // Strip trailing slash for consistent path joining
+    return endpoint.replace(/\/+$/, '');
+  }
+  return DEFAULT_ENDPOINT;
+}
 
 const converter = ortbConverter({
   context: {
@@ -106,6 +120,9 @@ const converter = ortbConverter({
 export const spec = {
   code: BIDDER_CODE,
   gvlid: 1494,
+  aliases: [
+    { code: 'tneCatalyst', skipPbsAliasing: true },
+  ],
   supportedMediaTypes: [BANNER, VIDEO],
 
   /**
@@ -135,11 +152,12 @@ export const spec = {
    */
   buildRequests(bidRequests, bidderRequest) {
     const data = converter.toORTB({ bidRequests, bidderRequest });
+    const baseUrl = getBaseUrl(bidRequests);
 
     return [
       {
         method: 'POST',
-        url: ENDPOINT_URL,
+        url: `${baseUrl}${AUCTION_PATH}`,
         data,
         options: {
           contentType: 'application/json',
@@ -224,7 +242,7 @@ export const spec = {
     if (syncOptions.iframeEnabled) {
       syncs.push({
         type: 'iframe',
-        url: `${USERSYNC_IFRAME_URL}${queryString}`,
+        url: `${DEFAULT_ENDPOINT}${USERSYNC_IFRAME_PATH}${queryString}`,
       });
     }
 
@@ -233,7 +251,7 @@ export const spec = {
     if (syncOptions.pixelEnabled) {
       syncs.push({
         type: 'image',
-        url: `${USERSYNC_PIXEL_URL}?bidder=${BIDDER_CODE}${params.length > 0 ? '&' + params.join('&') : ''}`,
+        url: `${DEFAULT_ENDPOINT}${USERSYNC_PIXEL_PATH}?bidder=${BIDDER_CODE}${params.length > 0 ? '&' + params.join('&') : ''}`,
       });
     }
 
