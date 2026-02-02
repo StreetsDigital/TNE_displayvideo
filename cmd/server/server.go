@@ -19,20 +19,22 @@ import (
 	"github.com/thenexusengine/tne_springwire/internal/metrics"
 	"github.com/thenexusengine/tne_springwire/internal/middleware"
 	"github.com/thenexusengine/tne_springwire/internal/storage"
+	"github.com/thenexusengine/tne_springwire/pkg/currency"
 	"github.com/thenexusengine/tne_springwire/pkg/logger"
 	"github.com/thenexusengine/tne_springwire/pkg/redis"
 )
 
 // Server represents the PBS server
 type Server struct {
-	config      *ServerConfig
-	httpServer  *http.Server
-	metrics     *metrics.Metrics
-	exchange    *exchange.Exchange
-	rateLimiter *middleware.RateLimiter
-	db          *storage.BidderStore
-	publisher   *storage.PublisherStore
-	redisClient *redis.Client
+	config            *ServerConfig
+	httpServer        *http.Server
+	metrics           *metrics.Metrics
+	exchange          *exchange.Exchange
+	rateLimiter       *middleware.RateLimiter
+	db                *storage.BidderStore
+	publisher         *storage.PublisherStore
+	redisClient       *redis.Client
+	currencyConverter *currency.Converter
 }
 
 // NewServer creates a new PBS server instance
@@ -174,8 +176,30 @@ func (s *Server) initMiddleware() {
 func (s *Server) initExchange() {
 	log := logger.Log
 
+	// Initialize currency converter if enabled
+	if s.config.CurrencyConversionEnabled {
+		s.currencyConverter = currency.NewConverter(currency.DefaultConfig())
+
+		// Start background rate updates
+		ctx := context.Background()
+		if err := s.currencyConverter.Start(ctx); err != nil {
+			log.Warn().Err(err).Msg("Failed to start currency converter, currency conversion disabled")
+			s.currencyConverter = nil
+		} else {
+			log.Info().
+				Str("default_currency", s.config.DefaultCurrency).
+				Msg("Currency converter initialized and started")
+		}
+	} else {
+		log.Info().Msg("Currency conversion disabled")
+	}
+
+	// Create exchange config with currency converter
+	exchangeConfig := s.config.ToExchangeConfig()
+	exchangeConfig.CurrencyConverter = s.currencyConverter
+
 	// Create exchange with default registry
-	s.exchange = exchange.New(adapters.DefaultRegistry, s.config.ToExchangeConfig())
+	s.exchange = exchange.New(adapters.DefaultRegistry, exchangeConfig)
 
 	// Wire up metrics for margin tracking
 	s.exchange.SetMetrics(s.metrics)
@@ -250,7 +274,7 @@ func (s *Server) initHandlers() {
 	mux.Handle("/openrtb2/auction", privacyProtectedAuction)
 	mux.Handle("/status", statusHandler)
 	mux.Handle("/health", healthHandler())
-	mux.Handle("/health/ready", readyHandler(s.redisClient, s.publisher, s.exchange))
+	mux.Handle("/health/ready", readyHandler(s.redisClient, s.publisher, s.exchange, s.currencyConverter))
 	mux.Handle("/info/bidders", biddersHandler)
 
 	// Cookie sync endpoints
@@ -270,6 +294,7 @@ func (s *Server) initHandlers() {
 
 	// Admin endpoints
 	mux.HandleFunc("/admin/circuit-breaker", s.circuitBreakerHandler)
+	mux.HandleFunc("/admin/currency", s.currencyStatsHandler)
 	dashboardHandler := endpoints.NewDashboardHandler()
 	metricsAPIHandler := endpoints.NewMetricsAPIHandler()
 	publisherAdminHandler := endpoints.NewPublisherAdminHandler(s.redisClient)
@@ -359,6 +384,29 @@ func (s *Server) circuitBreakerHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// currencyStatsHandler returns currency converter stats
+func (s *Server) currencyStatsHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	if s.currencyConverter == nil {
+		response := map[string]interface{}{
+			"status":  "disabled",
+			"message": "Currency conversion is not enabled",
+		}
+		w.WriteHeader(http.StatusOK)
+		if err := json.NewEncoder(w).Encode(response); err != nil {
+			logger.Log.Error().Err(err).Msg("failed to encode currency stats response")
+		}
+		return
+	}
+
+	stats := s.currencyConverter.Stats()
+	w.WriteHeader(http.StatusOK)
+	if err := json.NewEncoder(w).Encode(stats); err != nil {
+		logger.Log.Error().Err(err).Msg("failed to encode currency stats")
+	}
+}
+
 // Start starts the HTTP server
 func (s *Server) Start() error {
 	log := logger.Log
@@ -378,6 +426,12 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	// Stop rate limiter cleanup goroutine
 	if s.rateLimiter != nil {
 		s.rateLimiter.Stop()
+	}
+
+	// Stop currency converter background refresh
+	if s.currencyConverter != nil {
+		s.currencyConverter.Stop()
+		log.Info().Msg("Currency converter stopped")
 	}
 
 	// Flush pending events from exchange
@@ -489,7 +543,7 @@ func sanitizeHealthCheckError(service string, err error) string {
 // readyHandler returns a readiness check with dependency verification
 // SECURITY: Error messages are sanitized to prevent information disclosure.
 // Raw errors may contain connection strings, hostnames, or internal network details.
-func readyHandler(redisClient *redis.Client, publisherStore *storage.PublisherStore, ex *exchange.Exchange) http.Handler {
+func readyHandler(redisClient *redis.Client, publisherStore *storage.PublisherStore, ex *exchange.Exchange, currencyConverter *currency.Converter) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
 		defer cancel()
@@ -551,6 +605,38 @@ func readyHandler(redisClient *redis.Client, publisherStore *storage.PublisherSt
 			}
 		} else {
 			checks["idr"] = map[string]interface{}{
+				"status": "disabled",
+			}
+		}
+
+		// Check currency converter if enabled
+		if currencyConverter != nil {
+			stats := currencyConverter.Stats()
+			ratesLoaded := false
+			if loaded, ok := stats["ratesLoaded"].(bool); ok {
+				ratesLoaded = loaded
+			}
+
+			stale := false
+			if isStale, ok := stats["stale"].(bool); ok {
+				stale = isStale
+			}
+
+			if !ratesLoaded || stale {
+				checks["currency"] = map[string]interface{}{
+					"status":      "degraded",
+					"ratesLoaded": ratesLoaded,
+					"stale":       stale,
+				}
+				// Don't mark as unhealthy - stale rates can still work
+			} else {
+				checks["currency"] = map[string]interface{}{
+					"status":      "healthy",
+					"ratesLoaded": ratesLoaded,
+				}
+			}
+		} else {
+			checks["currency"] = map[string]interface{}{
 				"status": "disabled",
 			}
 		}
