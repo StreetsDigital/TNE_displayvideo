@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>TNE Catalyst VAST Integration Test</title>
+  <script src="//imasdk.googleapis.com/js/sdkloader/ima3.js"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 800px;
+      margin: 50px auto;
+      padding: 20px;
+    }
+    h1 { color: #333; }
+    #video-container {
+      width: 640px;
+      height: 360px;
+      position: relative;
+      background: #000;
+      margin: 20px 0;
+    }
+    #video {
+      width: 100%;
+      height: 100%;
+    }
+    #ad-container {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+    }
+    .info {
+      background: #f0f0f0;
+      padding: 15px;
+      border-radius: 5px;
+      margin: 20px 0;
+    }
+    .status {
+      margin-top: 20px;
+      padding: 10px;
+      border-radius: 5px;
+    }
+    .success { background: #d4edda; color: #155724; }
+    .error { background: #f8d7da; color: #721c24; }
+    .info-text { background: #d1ecf1; color: #0c5460; }
+    button {
+      background: #007bff;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      font-size: 16px;
+      cursor: pointer;
+      border-radius: 5px;
+    }
+    button:hover {
+      background: #0056b3;
+    }
+  </style>
+</head>
+<body>
+  <h1>🎬 TNE Catalyst VAST Tag Test</h1>
+
+  <div class="info">
+    <h3>Test Configuration:</h3>
+    <ul>
+      <li><strong>Endpoint:</strong> https://test.tne-catalyst.com/video/vast</li>
+      <li><strong>Publisher ID:</strong> pub-video-test</li>
+      <li><strong>Video Size:</strong> 640x360</li>
+      <li><strong>Ad Duration:</strong> 5-30 seconds</li>
+    </ul>
+  </div>
+
+  <button onclick="loadAd()">▶️ Load Video Ad</button>
+
+  <div id="video-container">
+    <video id="video" controls>
+      <source src="https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4" type="video/mp4">
+    </video>
+    <div id="ad-container"></div>
+  </div>
+
+  <div id="status"></div>
+
+  <div class="info">
+    <h3>Instructions:</h3>
+    <ol>
+      <li>Click "<strong>▶️ Load Video Ad</strong>" button above</li>
+      <li>Video ad should play before content</li>
+      <li>Check browser console for detailed logs</li>
+      <li>After ad completes, main video will play</li>
+    </ol>
+  </div>
+
+  <script>
+    // Configuration
+    const TNE_CONFIG = {
+      pubId: 'pub-video-test',
+      width: 640,
+      height: 360,
+      minDuration: 5,
+      maxDuration: 30,
+      mimes: 'video/mp4',
+      bidfloor: 0.50  // Low floor for testing
+    };
+
+    // Build VAST URL
+    function buildVastUrl() {
+      const params = new URLSearchParams({
+        pub_id: TNE_CONFIG.pubId,
+        w: TNE_CONFIG.width,
+        h: TNE_CONFIG.height,
+        mindur: TNE_CONFIG.minDuration,
+        maxdur: TNE_CONFIG.maxDuration,
+        mimes: TNE_CONFIG.mimes,
+        bidfloor: TNE_CONFIG.bidfloor
+      });
+
+      const url = `https://test.tne-catalyst.com/video/vast?${params}`;
+      console.log('VAST URL:', url);
+      return url;
+    }
+
+    // Initialize IMA
+    const videoElement = document.getElementById('video');
+    const adContainer = document.getElementById('ad-container');
+    const statusDiv = document.getElementById('status');
+
+    const adDisplayContainer = new google.ima.AdDisplayContainer(
+      adContainer,
+      videoElement
+    );
+
+    const adsLoader = new google.ima.AdsLoader(adDisplayContainer);
+    let adsManager;
+
+    function showStatus(message, type = 'info-text') {
+      statusDiv.className = 'status ' + type;
+      statusDiv.innerHTML = message;
+    }
+
+    // Request ads
+    function loadAd() {
+      showStatus('📡 Requesting video ad from TNE Catalyst...', 'info-text');
+      console.log('Initializing ad request...');
+
+      adDisplayContainer.initialize();
+
+      const adsRequest = new google.ima.AdsRequest();
+      adsRequest.adTagUrl = buildVastUrl();
+      adsRequest.linearAdSlotWidth = TNE_CONFIG.width;
+      adsRequest.linearAdSlotHeight = TNE_CONFIG.height;
+
+      adsLoader.requestAds(adsRequest);
+    }
+
+    // Handle ad loaded
+    adsLoader.addEventListener(
+      google.ima.AdsManagerLoadedEvent.Type.ADS_MANAGER_LOADED,
+      function(event) {
+        console.log('✅ Ad manager loaded successfully');
+        showStatus('✅ Ad loaded! Starting playback...', 'success');
+
+        adsManager = event.getAdsManager(videoElement);
+
+        // Add event listeners
+        adsManager.addEventListener(
+          google.ima.AdEvent.Type.STARTED,
+          function() {
+            console.log('🎬 Ad started playing');
+            showStatus('🎬 Video ad is playing...', 'success');
+          }
+        );
+
+        adsManager.addEventListener(
+          google.ima.AdEvent.Type.COMPLETE,
+          function() {
+            console.log('✅ Ad completed');
+            showStatus('✅ Ad completed! Playing content...', 'success');
+          }
+        );
+
+        adsManager.addEventListener(
+          google.ima.AdEvent.Type.SKIPPED,
+          function() {
+            console.log('⏭️ Ad skipped');
+            showStatus('⏭️ Ad skipped', 'info-text');
+          }
+        );
+
+        adsManager.init(TNE_CONFIG.width, TNE_CONFIG.height, google.ima.ViewMode.NORMAL);
+        adsManager.start();
+      }
+    );
+
+    // Handle errors
+    adsLoader.addEventListener(
+      google.ima.AdErrorEvent.Type.AD_ERROR,
+      function(event) {
+        const error = event.getError();
+        console.error('❌ Ad error:', error);
+        showStatus('❌ Ad error: ' + error.getMessage() + '<br><small>Playing content without ad...</small>', 'error');
+
+        // Play content on error
+        videoElement.play();
+      }
+    );
+
+    // Auto-load on page load (optional, comment out if you prefer manual)
+    // window.addEventListener('load', loadAd);
+  </script>
+
+  <div class="info">
+    <h3>Troubleshooting:</h3>
+    <ul>
+      <li><strong>No ad shows:</strong> Check browser console for errors</li>
+      <li><strong>"Ad error" message:</strong> Test endpoint may be down, check network tab</li>
+      <li><strong>VAST URL not working:</strong> Verify endpoint is accessible</li>
+      <li><strong>Need help?</strong> Check docs at: <code>docs/integrations/video-vast/SETUP.md</code></li>
+    </ul>
+  </div>
+</body>
+</html>
