@@ -16,6 +16,7 @@ import (
 	"github.com/thenexusengine/tne_springwire/internal/fpd"
 	"github.com/thenexusengine/tne_springwire/internal/middleware"
 	"github.com/thenexusengine/tne_springwire/internal/openrtb"
+	"github.com/thenexusengine/tne_springwire/pkg/currency"
 	"github.com/thenexusengine/tne_springwire/pkg/idr"
 	"github.com/thenexusengine/tne_springwire/pkg/logger"
 )
@@ -56,14 +57,15 @@ type MetricsRecorder interface {
 
 // Exchange orchestrates the auction process
 type Exchange struct {
-	registry        *adapters.Registry
-	httpClient      adapters.HTTPClient
-	idrClient       *idr.Client
-	eventRecorder   *idr.EventRecorder
-	config          *Config
-	fpdProcessor    *fpd.Processor
-	eidFilter       *fpd.EIDFilter
-	metrics         MetricsRecorder
+	registry          *adapters.Registry
+	httpClient        adapters.HTTPClient
+	idrClient         *idr.Client
+	eventRecorder     *idr.EventRecorder
+	config            *Config
+	fpdProcessor      *fpd.Processor
+	eidFilter         *fpd.EIDFilter
+	metrics           MetricsRecorder
+	currencyConverter *currency.Converter
 
 	// Per-bidder circuit breakers to prevent cascade failures
 	bidderBreakers   map[string]*idr.CircuitBreaker
@@ -132,6 +134,7 @@ type Config struct {
 	EventBufferSize      int
 	CurrencyConv         bool
 	DefaultCurrency      string
+	CurrencyConverter    *currency.Converter // Currency conversion support
 	FPD                  *fpd.Config
 	CloneLimits          *CloneLimits // P3-1: Configurable clone limits
 	// Auction configuration
@@ -241,12 +244,13 @@ func New(registry *adapters.Registry, config *Config) *Exchange {
 	}
 
 	ex := &Exchange{
-		registry:       registry,
-		httpClient:     adapters.NewHTTPClient(config.DefaultTimeout),
-		config:         config,
-		fpdProcessor:   fpd.NewProcessor(fpdConfig),
-		eidFilter:      fpd.NewEIDFilter(fpdConfig),
-		bidderBreakers: make(map[string]*idr.CircuitBreaker),
+		registry:          registry,
+		httpClient:        adapters.NewHTTPClient(config.DefaultTimeout),
+		config:            config,
+		fpdProcessor:      fpd.NewProcessor(fpdConfig),
+		eidFilter:         fpd.NewEIDFilter(fpdConfig),
+		bidderBreakers:    make(map[string]*idr.CircuitBreaker),
+		currencyConverter: config.CurrencyConverter,
 	}
 
 	// Initialize circuit breaker for each registered bidder
@@ -359,6 +363,7 @@ type AuctionResponse struct {
 type BidderResult struct {
 	BidderCode string
 	Bids       []*adapters.TypedBid
+	Currency   string // Currency of the bids (after conversion)
 	Errors     []error
 	Latency    time.Duration
 	Selected   bool
@@ -2276,27 +2281,84 @@ func (e *Exchange) callBidder(ctx context.Context, req *openrtb.BidRequest, bidd
 				}
 			}
 
-			// P1-NEW-4: Defensive check for exchange currency misconfiguration
-			// Normalize exchange currency to USD if empty to prevent silent validation bypass
+			// P1-NEW-4: Normalize exchange currency to USD if empty
 			exchangeCurrency := e.config.DefaultCurrency
 			if exchangeCurrency == "" {
 				exchangeCurrency = "USD" // Fallback if misconfigured
 			}
 
+			// Convert currency if needed
 			if responseCurrency != exchangeCurrency {
-				result.Errors = append(result.Errors, fmt.Errorf(
-					"currency mismatch from %s: expected %s, got %s (bids rejected)",
-					bidderCode, exchangeCurrency, responseCurrency,
-				))
-				// Skip bids with wrong currency - can't safely compare prices
-				continue
-			}
+				if e.currencyConverter == nil {
+					// No converter available - reject bids
+					result.Errors = append(result.Errors, fmt.Errorf(
+						"currency mismatch from %s: expected %s, got %s (no converter available, bids rejected)",
+						bidderCode, exchangeCurrency, responseCurrency,
+					))
+					continue
+				}
 
-			allBids = append(allBids, bidderResp.Bids...)
+				// Convert each bid price to target currency
+				convertedBids := make([]*adapters.TypedBid, 0, len(bidderResp.Bids))
+				for _, bid := range bidderResp.Bids {
+					if bid == nil || bid.Bid == nil {
+						continue
+					}
+
+					originalPrice := bid.Bid.Price
+					convertedPrice, err := e.convertBidCurrency(
+						originalPrice,
+						responseCurrency,
+						exchangeCurrency,
+						nil,   // No custom rates at adapter level
+						false, // Use external rates
+					)
+
+					if err != nil {
+						result.Errors = append(result.Errors, fmt.Errorf(
+							"failed to convert bid %s from %s to %s: %w (bid rejected)",
+							bid.Bid.ID, responseCurrency, exchangeCurrency, err,
+						))
+						logger.Log.Debug().
+							Str("bidder", bidderCode).
+							Str("bidID", bid.Bid.ID).
+							Str("from", responseCurrency).
+							Str("to", exchangeCurrency).
+							Float64("originalPrice", originalPrice).
+							Err(err).
+							Msg("currency conversion failed for bid")
+						// Skip this bid but continue with others
+						continue
+					}
+
+					// Update bid price with converted value
+					bid.Bid.Price = convertedPrice
+					convertedBids = append(convertedBids, bid)
+
+					logger.Log.Debug().
+						Str("bidder", bidderCode).
+						Str("bidID", bid.Bid.ID).
+						Str("from", responseCurrency).
+						Str("to", exchangeCurrency).
+						Float64("originalPrice", originalPrice).
+						Float64("convertedPrice", convertedPrice).
+						Msg("converted bid currency")
+				}
+
+				// Only add successfully converted bids
+				allBids = append(allBids, convertedBids...)
+			} else {
+				// Same currency, no conversion needed
+				allBids = append(allBids, bidderResp.Bids...)
+			}
 		}
 	}
 
 	result.Bids = allBids
+	result.Currency = e.config.DefaultCurrency
+	if result.Currency == "" {
+		result.Currency = "USD"
+	}
 	result.Latency = time.Since(start)
 	return result
 }
