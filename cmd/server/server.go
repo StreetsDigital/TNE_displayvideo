@@ -241,6 +241,12 @@ func (s *Server) initHandlers() {
 
 	log.Info().Msg("Video handlers initialized")
 
+	// Ad tag handlers (direct publisher integration)
+	adTagHandler := endpoints.NewAdTagHandler(s.exchange)
+	adTagGenerator := endpoints.NewAdTagGeneratorHandler(s.config.HostURL)
+
+	log.Info().Msg("Ad tag handlers initialized")
+
 	// Cookie sync handlers
 	cookieSyncConfig := endpoints.DefaultCookieSyncConfig(s.config.HostURL)
 	cookieSyncHandler := endpoints.NewCookieSyncHandler(cookieSyncConfig)
@@ -289,12 +295,22 @@ func (s *Server) initHandlers() {
 
 	log.Info().Msg("Video endpoints registered: /video/vast, /video/openrtb, /video/event/*")
 
+	// Ad tag endpoints (direct publisher integration)
+	mux.HandleFunc("/ad/js", adTagHandler.HandleJavaScriptAd)
+	mux.HandleFunc("/ad/iframe", adTagHandler.HandleIframeAd)
+	mux.HandleFunc("/ad/gam", adTagHandler.HandleGAMAd)
+	mux.HandleFunc("/ad/track", adTagHandler.HandleAdTracking)
+
+	log.Info().Msg("Ad tag endpoints registered: /ad/js, /ad/iframe, /ad/gam, /ad/track")
+
 	// Prometheus metrics endpoint
 	mux.Handle("/metrics", metrics.Handler())
 
 	// Admin endpoints
 	mux.HandleFunc("/admin/circuit-breaker", s.circuitBreakerHandler)
 	mux.HandleFunc("/admin/currency", s.currencyStatsHandler)
+	mux.HandleFunc("/admin/adtag/generator", adTagGenerator.HandleGeneratorUI)
+	mux.HandleFunc("/admin/adtag/generate", adTagGenerator.HandleGenerateTag)
 	dashboardHandler := endpoints.NewDashboardHandler()
 	metricsAPIHandler := endpoints.NewMetricsAPIHandler()
 	publisherAdminHandler := endpoints.NewPublisherAdminHandler(s.redisClient)
@@ -302,6 +318,8 @@ func (s *Server) initHandlers() {
 	mux.Handle("/admin/metrics", metricsAPIHandler)
 	mux.Handle("/admin/publishers", publisherAdminHandler)
 	mux.Handle("/admin/publishers/", publisherAdminHandler)
+
+	log.Info().Msg("Admin tag generator registered: /admin/adtag/generator")
 
 	// Build middleware chain
 	handler := s.buildHandler(mux)
