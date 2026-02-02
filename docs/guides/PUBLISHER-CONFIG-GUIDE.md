@@ -430,7 +430,7 @@ docker exec -it catalyst-redis redis-cli HGET tne_catalyst:publishers pub123
 ### Test Auction Request
 
 ```bash
-curl -X POST https://catalyst.springwire.ai/openrtb2/auction \
+curl -X POST https://ads.thenexusengine.com/openrtb2/auction \
   -H "Content-Type: application/json" \
   -d '{
     "id": "test-123",

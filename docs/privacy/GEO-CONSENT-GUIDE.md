@@ -423,15 +423,15 @@ Test your integration with different geo configurations:
 
 ```bash
 # Test EU
-curl -X POST https://catalyst.springwire.ai/openrtb2/auction \
+curl -X POST https://ads.thenexusengine.com/openrtb2/auction \
   -d @examples/bid-requests/eu-gdpr-request.json
 
 # Test California
-curl -X POST https://catalyst.springwire.ai/openrtb2/auction \
+curl -X POST https://ads.thenexusengine.com/openrtb2/auction \
   -d @examples/bid-requests/us-ca-ccpa-request.json
 
 # Test non-regulated
-curl -X POST https://catalyst.springwire.ai/openrtb2/auction \
+curl -X POST https://ads.thenexusengine.com/openrtb2/auction \
   -d @examples/bid-requests/non-regulated-request.json
 ```
 
@@ -464,7 +464,7 @@ When using Catalyst as a server-side Prebid Server:
 // pbjs-config.js
 pbjs.setConfig({
   s2sConfig: {
-    endpoint: 'https://catalyst.springwire.ai/openrtb2/auction',
+    endpoint: 'https://ads.thenexusengine.com/openrtb2/auction',
     // Geo will be added automatically by your server
     // Consent will be read from CMP
   },

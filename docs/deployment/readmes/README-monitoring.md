@@ -179,7 +179,7 @@ echo "Total: $TOTAL"
 ```bash
 # Send 100 test requests
 for i in {1..100}; do
-  curl -s -I https://catalyst.springwire.ai/health 2>&1 | grep X-Backend
+  curl -s -I https://ads.thenexusengine.com/health 2>&1 | grep X-Backend
 done | sort | uniq -c
 
 # Expected output:
@@ -516,7 +516,7 @@ docker logs --since 60m catalyst-prod 2>&1 | grep -c '"level":"error"'
 docker logs --since 60m catalyst-staging 2>&1 | grep -c '"level":"error"'
 
 # Test traffic split
-curl -I https://catalyst.springwire.ai/health | grep X-Backend
+curl -I https://ads.thenexusengine.com/health | grep X-Backend
 ```
 
 ### Decision Flow
@@ -535,4 +535,4 @@ Check recommendations
 
 **Last Updated**: 2025-01-13
 **Tool**: compare-performance.sh
-**Deployment**: catalyst.springwire.ai
+**Deployment**: ads.thenexusengine.com

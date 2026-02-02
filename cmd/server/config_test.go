@@ -40,8 +40,8 @@ func TestParseConfig_Defaults(t *testing.T) {
 		t.Errorf("Expected default currency 'USD', got '%s'", cfg.DefaultCurrency)
 	}
 
-	if cfg.HostURL != "https://catalyst.springwire.ai" {
-		t.Errorf("Expected default host URL 'https://catalyst.springwire.ai', got '%s'", cfg.HostURL)
+	if cfg.HostURL != "https://ads.thenexusengine.com" {
+		t.Errorf("Expected default host URL 'https://ads.thenexusengine.com', got '%s'", cfg.HostURL)
 	}
 
 	if cfg.DatabaseConfig != nil {

@@ -52,7 +52,7 @@ docker logs catalyst-nginx-waf
 
 ```bash
 # Test with a malicious request (should be blocked)
-curl -X POST https://catalyst.springwire.ai/openrtb2/auction \
+curl -X POST https://ads.thenexusengine.com/openrtb2/auction \
   -H "Content-Type: application/json" \
   -d '{"id":"test","imp":[{"id":"1"}],"site":{"domain":"example.com' OR 1=1--"}}'
 
@@ -395,7 +395,7 @@ filebeat -c filebeat-modsec.yml
 
 ```bash
 # Use OWASP ZAP or Burp Suite to scan your endpoint
-zap-cli quick-scan --self-contained https://catalyst.springwire.ai/openrtb2/auction
+zap-cli quick-scan --self-contained https://ads.thenexusengine.com/openrtb2/auction
 
 # Verify WAF blocks attacks
 ```
@@ -412,7 +412,7 @@ zap-cli quick-scan --self-contained https://catalyst.springwire.ai/openrtb2/auct
 For issues or questions:
 1. Check logs: `docker logs catalyst-nginx-waf`
 2. Review audit log: `tail modsec-logs/audit.log`
-3. Test with: `curl -v https://catalyst.springwire.ai/health`
+3. Test with: `curl -v https://ads.thenexusengine.com/health`
 4. File issue: [GitHub Issues](https://github.com/thenexusengine/tne_springwire/issues)
 
 ---

@@ -498,7 +498,7 @@ This file uses `.env` file for all configuration.
 See `README-env.md` for detailed explanation of each variable.
 
 Quick reference:
-- **PBS_HOST_URL**: Public domain (catalyst.springwire.ai)
+- **PBS_HOST_URL**: Public domain (ads.thenexusengine.com)
 - **CORS_ALLOWED_ORIGINS**: Publisher domains
 - **IDR_ENABLED**: false (start disabled)
 - **IVT_BLOCKING_ENABLED**: false (monitoring mode first)
@@ -524,7 +524,7 @@ Before running `docker compose up`:
 - [ ] SSL directory created: `/opt/catalyst/ssl/`
 - [ ] SSL certificates present: `fullchain.pem`, `privkey.pem`
 - [ ] `.env` file customized (CORS origins, etc.)
-- [ ] DNS pointing to server: `catalyst.springwire.ai`
+- [ ] DNS pointing to server: `ads.thenexusengine.com`
 - [ ] Ports 80, 443 open in firewall
 
 Then:
@@ -537,5 +537,5 @@ docker compose logs -f
 ---
 
 **Last Updated**: 2025-01-13
-**Deployment**: catalyst.springwire.ai
+**Deployment**: ads.thenexusengine.com
 **Maintainer**: The Nexus Engine / Springwire

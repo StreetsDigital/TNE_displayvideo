@@ -3,7 +3,7 @@
 **Date**: 2026-01-13
 **Tested By**: Claude Code
 **Test Type**: Pre-Deployment Validation
-**Target**: catalyst.springwire.ai
+**Target**: ads.thenexusengine.com
 
 ---
 
@@ -11,7 +11,7 @@
 
 ✅ **DEPLOYMENT READY**
 
-All critical systems validated and deployment configuration is production-ready. The TNE Catalyst deployment to catalyst.springwire.ai has passed comprehensive end-to-end testing across 9 validation categories.
+All critical systems validated and deployment configuration is production-ready. The TNE Catalyst deployment to ads.thenexusengine.com has passed comprehensive end-to-end testing across 9 validation categories.
 
 **Key Findings**:
 - All configuration files properly formatted and consistent
@@ -53,7 +53,7 @@ All critical systems validated and deployment configuration is production-ready.
 - IVT and IDR disabled for simpler local setup
 
 ✅ **`.env.production` - Production Configuration**
-- PBS_HOST_URL correctly set to `https://catalyst.springwire.ai`
+- PBS_HOST_URL correctly set to `https://ads.thenexusengine.com`
 - Passwords flagged for changing (`CHANGE_ME_STRONG_PASSWORD_HERE`)
 - DB_SSL_MODE set to `require` for secure connections
 - HSTS enabled (`SECURITY_HSTS_ENABLED=true`)
@@ -164,7 +164,7 @@ docker compose config  # Validates syntax successfully
 **Findings**:
 
 ✅ **`nginx.conf` - Regular Deployment**
-- Server name: `catalyst.springwire.ai` (correct)
+- Server name: `ads.thenexusengine.com` (correct)
 - HTTP → HTTPS redirect configured (port 80 → 443)
 - SSL certificates path: `/etc/nginx/ssl/fullchain.pem` + `privkey.pem`
 - Modern TLS configuration (TLS 1.2 + 1.3 only)
@@ -237,11 +237,11 @@ docker compose config  # Validates syntax successfully
 
 **Findings**:
 
-✅ **Domain: catalyst.springwire.ai**
-- `.env.production`: `PBS_HOST_URL=https://catalyst.springwire.ai`
-- `.env.staging`: `PBS_HOST_URL=https://catalyst.springwire.ai`
-- `nginx.conf` (line 46, 71): `server_name catalyst.springwire.ai`
-- `nginx-split.conf` (line 64, 90): `server_name catalyst.springwire.ai`
+✅ **Domain: ads.thenexusengine.com**
+- `.env.production`: `PBS_HOST_URL=https://ads.thenexusengine.com`
+- `.env.staging`: `PBS_HOST_URL=https://ads.thenexusengine.com`
+- `nginx.conf` (line 46, 71): `server_name ads.thenexusengine.com`
+- `nginx-split.conf` (line 64, 90): `server_name ads.thenexusengine.com`
 - `cmd/server/main.go` (line 143): Default hostURL
 
 ✅ **GitHub Repository: thenexusengine/tne_springwire**
@@ -258,7 +258,7 @@ docker compose config  # Validates syntax successfully
 
 **Documentation Placeholders** (Acceptable):
 - `.env.production`: `CORS_ALLOWED_ORIGINS=https://yourpublisher.com` (user must configure)
-- `.env.production`: `IDR_URL=https://idr.catalyst.springwire.ai` (optional service)
+- `.env.production`: `IDR_URL=https://idr.ads.thenexusengine.com` (optional service)
 
 ---
 
@@ -274,7 +274,7 @@ docker compose config  # Validates syntax successfully
 **Findings**:
 
 ✅ **DEPLOYMENT_GUIDE.md**
-- Target domain correct: catalyst.springwire.ai
+- Target domain correct: ads.thenexusengine.com
 - GitHub clone command correct: `git clone https://github.com/thenexusengine/tne_springwire.git`
 - File paths accurate
 - Commands verified working
@@ -296,7 +296,7 @@ docker compose config  # Validates syntax successfully
 **Documentation Improvements Made**:
 - Removed generic deployment methods (Fly.io, AWS Lightsail)
 - Removed outdated DOCKER_DEPLOYMENT.md (916 lines)
-- Focused documentation on Docker Compose for catalyst.springwire.ai
+- Focused documentation on Docker Compose for ads.thenexusengine.com
 - All placeholder URLs removed from README.md
 
 ---
@@ -445,7 +445,7 @@ ls /opt/catalyst/.env
 ### 5. Verify DNS (REQUIRED)
 ```bash
 # Confirm DNS points to server
-dig catalyst.springwire.ai
+dig ads.thenexusengine.com
 
 # Should return your server IP
 ```
@@ -483,32 +483,32 @@ After deployment, verify these endpoints:
 
 ### 1. Health Check
 ```bash
-curl https://catalyst.springwire.ai/health
+curl https://ads.thenexusengine.com/health
 # Expected: {"status":"ok"} or similar
 ```
 
 ### 2. Readiness Check
 ```bash
-curl https://catalyst.springwire.ai/health/ready
+curl https://ads.thenexusengine.com/health/ready
 # Expected: {"ready":true,"checks":{...}}
 ```
 
 ### 3. HTTPS Redirect
 ```bash
-curl -I http://catalyst.springwire.ai
+curl -I http://ads.thenexusengine.com
 # Expected: 301 Moved Permanently → https://
 ```
 
 ### 4. SSL Certificate
 ```bash
-openssl s_client -connect catalyst.springwire.ai:443 -servername catalyst.springwire.ai
+openssl s_client -connect ads.thenexusengine.com:443 -servername ads.thenexusengine.com
 # Verify: certificate matches domain, not expired
 ```
 
 ### 5. Auction Endpoint (with sample request)
 ```bash
 # See DEPLOYMENT_GUIDE.md for sample OpenRTB request
-curl -X POST https://catalyst.springwire.ai/openrtb2/auction \
+curl -X POST https://ads.thenexusengine.com/openrtb2/auction \
   -H "Content-Type: application/json" \
   -d @sample-bid-request.json
 ```
@@ -603,7 +603,7 @@ curl -X POST https://catalyst.springwire.ai/openrtb2/auction \
 
 ✅ **DEPLOYMENT APPROVED**
 
-The TNE Catalyst deployment configuration for catalyst.springwire.ai is **production-ready** pending completion of 4 mandatory pre-deployment actions:
+The TNE Catalyst deployment configuration for ads.thenexusengine.com is **production-ready** pending completion of 4 mandatory pre-deployment actions:
 
 1. Configure production passwords
 2. Configure CORS origins
@@ -643,7 +643,7 @@ go mod verify
 go list -m all
 
 # File analysis
-grep -r "catalyst.springwire.ai" deployment/
+grep -r "ads.thenexusengine.com" deployment/
 grep -r "thenexusengine/tne_springwire" deployment/
 grep "healthcheck" deployment/*.yml Dockerfile
 

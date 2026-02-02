@@ -288,7 +288,7 @@ Your client (JS script, server-side integration, or other source) constructs the
 ### 2. Request Sent to Catalyst PBS
 
 ```bash
-POST https://catalyst.springwire.ai/openrtb2/auction
+POST https://ads.thenexusengine.com/openrtb2/auction
 Content-Type: application/json
 
 {
@@ -343,7 +343,7 @@ The Rubicon adapter forwards the entire `imp.ext.rubicon` object to Rubicon's PB
 ### Test with curl
 
 ```bash
-curl -X POST https://catalyst.springwire.ai/openrtb2/auction \
+curl -X POST https://ads.thenexusengine.com/openrtb2/auction \
   -H "Content-Type: application/json" \
   -d '{
     "id": "test-123",
@@ -647,7 +647,7 @@ Create a configuration file documenting all bidder parameters:
 **Need Help?**
 
 - Check logs: `docker compose logs -f catalyst`
-- Test endpoint: `https://catalyst.springwire.ai/info/bidders`
+- Test endpoint: `https://ads.thenexusengine.com/info/bidders`
 - Review README.md for general setup
 
 ---

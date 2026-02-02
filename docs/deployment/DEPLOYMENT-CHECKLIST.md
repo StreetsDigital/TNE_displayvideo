@@ -1,6 +1,6 @@
 # TNE Catalyst - Pre-Deployment Checklist
 
-**Domain**: catalyst.springwire.ai
+**Domain**: ads.thenexusengine.com
 **Date**: ______________
 **Deployed By**: ______________
 
@@ -35,7 +35,7 @@ Use this checklist to ensure everything is ready before production deployment.
   - [ ] Database accessible from Docker network
 
 - [ ] **DNS Configuration**
-  - [ ] catalyst.springwire.ai points to server IP
+  - [ ] ads.thenexusengine.com points to server IP
   - [ ] DNS propagation complete (check with `dig`)
   - [ ] A record or CNAME configured
   - [ ] TTL set appropriately
@@ -60,7 +60,7 @@ Use this checklist to ensure everything is ready before production deployment.
   - [ ] fullchain.pem exists
   - [ ] privkey.pem exists
   - [ ] Certificates valid (not expired)
-  - [ ] Certificates match domain (catalyst.springwire.ai)
+  - [ ] Certificates match domain (ads.thenexusengine.com)
 
 - [ ] **Certificates Installed**
   - [ ] Copied to `/opt/catalyst/ssl/`
@@ -101,7 +101,7 @@ Use this checklist to ensure everything is ready before production deployment.
   - [ ] All placeholders replaced
 
 - [ ] **Critical Settings Updated**
-  - [ ] `PBS_HOST_URL=https://catalyst.springwire.ai`
+  - [ ] `PBS_HOST_URL=https://ads.thenexusengine.com`
   - [ ] `DB_PASSWORD` changed (not default)
   - [ ] `REDIS_PASSWORD` set (strong password)
   - [ ] `CORS_ALLOWED_ORIGINS` set to publisher domains (not *)
@@ -239,17 +239,17 @@ Use this checklist to ensure everything is ready before production deployment.
 ### Post-Deployment Verification
 
 - [ ] **HTTP Redirect Working**
-  - [ ] Test: `curl -I http://catalyst.springwire.ai`
+  - [ ] Test: `curl -I http://ads.thenexusengine.com`
   - [ ] Should return: `301 Moved Permanently`
-  - [ ] Location header: `https://catalyst.springwire.ai`
+  - [ ] Location header: `https://ads.thenexusengine.com`
 
 - [ ] **HTTPS Working**
-  - [ ] Test: `curl -I https://catalyst.springwire.ai`
+  - [ ] Test: `curl -I https://ads.thenexusengine.com`
   - [ ] Should return: `200 OK`
   - [ ] No SSL errors
 
 - [ ] **Health Endpoint**
-  - [ ] Test: `curl https://catalyst.springwire.ai/health`
+  - [ ] Test: `curl https://ads.thenexusengine.com/health`
   - [ ] Should return: `{"status":"ok"}` or similar
   - [ ] Response time < 100ms
 
@@ -265,7 +265,7 @@ Use this checklist to ensure everything is ready before production deployment.
   - [ ] Preflight requests successful
 
 - [ ] **SSL Certificate**
-  - [ ] Test: `openssl s_client -connect catalyst.springwire.ai:443`
+  - [ ] Test: `openssl s_client -connect ads.thenexusengine.com:443`
   - [ ] Certificate valid
   - [ ] Certificate matches domain
   - [ ] Not expired
@@ -481,7 +481,7 @@ cp .env.backup .env
 docker compose up -d
 
 # Verify rollback successful
-curl https://catalyst.springwire.ai/health
+curl https://ads.thenexusengine.com/health
 ```
 
 **Rollback Contact**: ______________
@@ -491,4 +491,4 @@ curl https://catalyst.springwire.ai/health
 
 **Last Updated**: 2025-01-13
 **Version**: 1.0.0
-**Domain**: catalyst.springwire.ai
+**Domain**: ads.thenexusengine.com

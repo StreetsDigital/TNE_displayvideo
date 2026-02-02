@@ -103,13 +103,13 @@ The server will start on `http://localhost:8000`.
 
 ## Deployment
 
-For production deployment to **catalyst.springwire.ai**:
+For production deployment to **ads.thenexusengine.com**:
 
 - **[DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md)** - Quick start guide (~30 minutes)
 - **[deployment/README.md](deployment/README.md)** - Comprehensive deployment documentation
 - **[deployment/DEPLOYMENT-CHECKLIST.md](deployment/DEPLOYMENT-CHECKLIST.md)** - Pre-deployment checklist
 
-All deployment is via Docker Compose on catalyst.springwire.ai.
+All deployment is via Docker Compose on ads.thenexusengine.com.
 
 ---
 
@@ -122,7 +122,7 @@ All deployment is via Docker Compose on catalyst.springwire.ai.
 | Variable | Type | Default | Description |
 |----------|------|---------|-------------|
 | `PBS_PORT` | string | `"8000"` | Server port |
-| `PBS_HOST_URL` | string | `""` | Public hostname for cookie sync (e.g., https://catalyst.springwire.ai) |
+| `PBS_HOST_URL` | string | `""` | Public hostname for cookie sync (e.g., https://ads.thenexusengine.com) |
 | `HOST` | string | `"0.0.0.0"` | Bind address |
 | `LOG_LEVEL` | string | `"info"` | Logging level (debug, info, warn, error) |
 | `CORS_ALLOWED_ORIGINS` | string | `""` | Comma-separated list of allowed CORS origins |
@@ -239,7 +239,7 @@ PUBLISHER_ALLOW_UNREGISTERED=true  # Allow testing without registration
 ```bash
 # .env.production
 PBS_PORT=8000
-PBS_HOST_URL=https://catalyst.springwire.ai
+PBS_HOST_URL=https://ads.thenexusengine.com
 HOST=0.0.0.0
 LOG_LEVEL=info
 
@@ -392,23 +392,23 @@ cd deployment
 **Method 2: REST API** (For UX Integration)
 ```bash
 # List all publishers
-curl https://catalyst.springwire.ai/admin/publishers
+curl https://ads.thenexusengine.com/admin/publishers
 
 # Get specific publisher
-curl https://catalyst.springwire.ai/admin/publishers/pub123
+curl https://ads.thenexusengine.com/admin/publishers/pub123
 
 # Create publisher
-curl -X POST https://catalyst.springwire.ai/admin/publishers \
+curl -X POST https://ads.thenexusengine.com/admin/publishers \
   -H "Content-Type: application/json" \
   -d '{"id":"pub123","allowed_domains":"example.com|*.example.com"}'
 
 # Update publisher
-curl -X PUT https://catalyst.springwire.ai/admin/publishers/pub123 \
+curl -X PUT https://ads.thenexusengine.com/admin/publishers/pub123 \
   -H "Content-Type: application/json" \
   -d '{"allowed_domains":"newdomain.com"}'
 
 # Delete publisher
-curl -X DELETE https://catalyst.springwire.ai/admin/publishers/pub123
+curl -X DELETE https://ads.thenexusengine.com/admin/publishers/pub123
 ```
 
 **Method 3: Environment Variables** (Static)
@@ -488,7 +488,7 @@ cd examples
 ./test-rubicon-params.sh <account_id> <site_id> <zone_id>
 
 # Test with curl
-curl -X POST https://catalyst.springwire.ai/openrtb2/auction \
+curl -X POST https://ads.thenexusengine.com/openrtb2/auction \
   -H "Content-Type: application/json" \
   -d @rubicon-bid-request.json
 ```

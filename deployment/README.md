@@ -2,15 +2,17 @@
 
 **Master Guide and Documentation Index**
 
-This folder contains everything needed to deploy TNE Catalyst to production at **catalyst.springwire.ai**.
+This folder contains everything needed to deploy TNE Catalyst to production at **ads.thenexusengine.com**.
 
 ---
 
 ## Quick Start
 
-**First time deploying?** Start here: `../DEPLOYMENT_GUIDE.md`
+**First time deploying?** Start here: `../docs/deployment/DEPLOYMENT_GUIDE.md`
 
 **Updating existing deployment?** See "Common Tasks" section below.
+
+**Complete documentation**: See `../docs/deployment/` for all deployment documentation.
 
 ---
 
@@ -75,23 +77,46 @@ deployment/
 ├── .env.dev                       ← Development environment config
 ├── .env.production                ← Production environment config (100% traffic)
 ├── .env.staging                   ← Staging environment config (5% traffic)
-├── README-env.md                  ← Complete environment variable reference
 │
 ├── docker-compose.yml             ← Regular deployment (single environment)
 ├── docker-compose-split.yml       ← Traffic splitting (95% prod, 5% staging)
-├── README-docker-compose.md       ← Docker Compose documentation
+├── docker-compose-modsecurity.yml ← Deployment with WAF
 │
 ├── nginx.conf                     ← Nginx config (regular deployment)
 ├── nginx-split.conf               ← Nginx config (traffic splitting)
-├── README-nginx.md                ← Nginx configuration guide
+├── nginx-modsecurity.conf         ← Nginx config with WAF
 │
-├── README-environments.md         ← Environment strategy explained
-├── README-traffic-splitting.md    ← Traffic splitting guide (canary)
-├── README-monitoring.md           ← Performance comparison guide
+├── Dockerfile.backup              ← Backup container config
 │
-├── compare-performance.sh         ← Automated performance comparison tool
+├── *.sh scripts                   ← Deployment and management scripts
+│   ├── backup-postgres.sh
+│   ├── restore-postgres.sh
+│   ├── generate-secrets.sh
+│   ├── setup-letsencrypt.sh
+│   ├── setup-s3-backups.sh
+│   ├── manage-bidders.sh
+│   ├── manage-publishers.sh
+│   ├── verify-production-config.sh
+│   └── ... (see file list)
 │
-└── DEPLOYMENT-CHECKLIST.md        ← Pre-deployment checklist
+├── migrations/                    ← Database migrations
+├── modsecurity/                   ← WAF configuration
+├── prometheus/                    ← Prometheus monitoring config
+└── waf-tests/                     ← WAF test files
+
+Documentation (now in ../docs/deployment/):
+├── DEPLOYMENT_GUIDE.md
+├── PRODUCTION-DEPLOYMENT-CHECKLIST.md
+├── DISASTER-RECOVERY.md
+├── PROMETHEUS-METRICS.md
+└── readmes/                       ← Detailed config documentation
+    ├── README-env.md
+    ├── README-docker-compose.md
+    ├── README-nginx.md
+    ├── README-environments.md
+    ├── README-traffic-splitting.md
+    ├── README-monitoring.md
+    └── WAF-README.md
 ```
 
 **Generated at runtime:**
@@ -289,7 +314,7 @@ nano .env  # Update passwords and CORS
 docker compose up -d
 
 # 6. Verify
-curl https://catalyst.springwire.ai/health
+curl https://ads.thenexusengine.com/health
 ```
 
 ### Update to Latest Code
@@ -730,14 +755,19 @@ resources:
 
 ### Documentation Index
 
-1. **Quick Start**: `../DEPLOYMENT_GUIDE.md`
-2. **Environment Variables**: `README-env.md`
-3. **Docker Compose**: `README-docker-compose.md`
-4. **Nginx Config**: `README-nginx.md`
-5. **Environments Strategy**: `README-environments.md`
-6. **Traffic Splitting**: `README-traffic-splitting.md`
-7. **Monitoring**: `README-monitoring.md`
-8. **Pre-Deployment**: `DEPLOYMENT-CHECKLIST.md`
+**All documentation has been moved to** `../docs/deployment/`
+
+1. **Quick Start**: `../docs/deployment/DEPLOYMENT_GUIDE.md`
+2. **Production Checklist**: `../docs/deployment/PRODUCTION-DEPLOYMENT-CHECKLIST.md`
+3. **Disaster Recovery**: `../docs/deployment/DISASTER-RECOVERY.md`
+4. **Prometheus Metrics**: `../docs/deployment/PROMETHEUS-METRICS.md`
+5. **Environment Variables**: `../docs/deployment/readmes/README-env.md`
+6. **Docker Compose**: `../docs/deployment/readmes/README-docker-compose.md`
+7. **Nginx Config**: `../docs/deployment/readmes/README-nginx.md`
+8. **Environments Strategy**: `../docs/deployment/readmes/README-environments.md`
+9. **Traffic Splitting**: `../docs/deployment/readmes/README-traffic-splitting.md`
+10. **Monitoring**: `../docs/deployment/readmes/README-monitoring.md`
+11. **WAF Setup**: `../docs/deployment/readmes/WAF-README.md`
 
 ### Common Questions
 
@@ -774,7 +804,7 @@ A: Yes! Use `.env.dev` and docker-compose.yml
 
 ---
 
-**Last Updated**: 2025-01-13
+**Last Updated**: 2026-02-02
 **Repository**: https://github.com/thenexusengine/tne_springwire
-**Domain**: catalyst.springwire.ai
+**Domain**: ads.thenexusengine.com
 **Maintainer**: TNE Catalyst Team

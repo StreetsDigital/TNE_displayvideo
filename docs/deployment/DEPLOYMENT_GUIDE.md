@@ -1,6 +1,6 @@
 # TNE Catalyst - Quick Deployment Guide
 
-**Target**: catalyst.springwire.ai
+**Target**: ads.thenexusengine.com
 **Method**: Docker Compose
 **Time**: ~30 minutes
 
@@ -15,7 +15,7 @@ What you need before starting:
 - [ ] SSH access to your server
 - [ ] Docker and Docker Compose installed
 - [ ] PostgreSQL database running
-- [ ] Domain pointing to your server (catalyst.springwire.ai)
+- [ ] Domain pointing to your server (ads.thenexusengine.com)
 - [ ] SSL certificates (via Certbot or similar)
 
 ---
@@ -80,13 +80,13 @@ sudo apt install certbot -y
 
 # Generate certificates (HTTP challenge)
 sudo certbot certonly --standalone \
-  -d catalyst.springwire.ai \
+  -d ads.thenexusengine.com \
   --email your@email.com \
   --agree-tos
 
 # Copy certificates to deployment directory
-sudo cp /etc/letsencrypt/live/catalyst.springwire.ai/fullchain.pem ./ssl/
-sudo cp /etc/letsencrypt/live/catalyst.springwire.ai/privkey.pem ./ssl/
+sudo cp /etc/letsencrypt/live/ads.thenexusengine.com/fullchain.pem ./ssl/
+sudo cp /etc/letsencrypt/live/ads.thenexusengine.com/privkey.pem ./ssl/
 sudo chown $USER:$USER ./ssl/*
 ```
 
@@ -211,17 +211,17 @@ docker compose logs -f catalyst-prod
 curl http://localhost:8000/health
 
 # Public test (should return OK)
-curl https://catalyst.springwire.ai/health
+curl https://ads.thenexusengine.com/health
 
 # Check headers
-curl -I https://catalyst.springwire.ai/health
+curl -I https://ads.thenexusengine.com/health
 # Should show: HTTP/2 200
 ```
 
 **Test auction endpoint:**
 
 ```bash
-curl -X POST https://catalyst.springwire.ai/openrtb2/auction \
+curl -X POST https://ads.thenexusengine.com/openrtb2/auction \
   -H "Content-Type: application/json" \
   -d '{
     "id": "test-auction-001",
@@ -513,7 +513,7 @@ tail -f /opt/catalyst/nginx-logs/error.log
 
 **Check health:**
 ```bash
-curl https://catalyst.springwire.ai/health
+curl https://ads.thenexusengine.com/health
 ```
 
 ---
@@ -555,4 +555,4 @@ After successful deployment:
 
 **Last Updated**: 2025-01-13
 **Repository**: https://github.com/thenexusengine/tne_springwire
-**Domain**: catalyst.springwire.ai
+**Domain**: ads.thenexusengine.com

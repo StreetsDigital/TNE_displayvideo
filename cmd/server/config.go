@@ -73,7 +73,7 @@ func ParseConfig() *ServerConfig {
 		CurrencyConversionEnabled: os.Getenv("CURRENCY_CONVERSION_ENABLED") != "false",
 		DefaultCurrency:           "USD",
 		DisableGDPREnforcement:    os.Getenv("PBS_DISABLE_GDPR_ENFORCEMENT") == "true",
-		HostURL:                   getEnvOrDefault("PBS_HOST_URL", "https://catalyst.springwire.ai"),
+		HostURL:                   getEnvOrDefault("PBS_HOST_URL", "https://ads.thenexusengine.com"),
 	}
 
 	// Parse database config if DB_HOST is set

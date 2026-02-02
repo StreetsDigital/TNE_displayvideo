@@ -2,7 +2,7 @@
 # Test Rubicon bidder parameters
 # Usage: ./test-rubicon-params.sh [account_id] [site_id] [zone_id]
 
-CATALYST_URL="${CATALYST_URL:-https://catalyst.springwire.ai}"
+CATALYST_URL="${CATALYST_URL:-https://ads.thenexusengine.com}"
 ACCOUNT_ID="${1:-26298}"
 SITE_ID="${2:-556630}"
 ZONE_ID="${3:-3767186}"

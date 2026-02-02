@@ -2,7 +2,7 @@
 
 ## Overview
 
-This deployment is designed for **catalyst.springwire.ai** which is **PRODUCTION**.
+This deployment is designed for **ads.thenexusengine.com** which is **PRODUCTION**.
 
 We support 3 environments with a simple `.env` file strategy.
 
@@ -22,10 +22,10 @@ We support 3 environments with a simple `.env` file strategy.
 **Database**: Separate Redis instance
 **SSL**: Yes (Let's Encrypt)
 
-### 3. Production (catalyst.springwire.ai)
+### 3. Production (ads.thenexusengine.com)
 **Purpose**: Live traffic
 **Location**: Your colleague's server
-**Domain**: `catalyst.springwire.ai`
+**Domain**: `ads.thenexusengine.com`
 **Database**: Production Redis
 **SSL**: Yes (managed by colleague)
 
@@ -145,15 +145,15 @@ PUBLISHER_VALIDATE_DOMAIN=true
 REGISTERED_PUBLISHERS=staging-pub:staging-publisher.com
 ```
 
-### .env.production (Production - catalyst.springwire.ai)
+### .env.production (Production - ads.thenexusengine.com)
 
 ```bash
 # Production Environment
-# Live traffic on catalyst.springwire.ai
+# Live traffic on ads.thenexusengine.com
 
 # Server Configuration
 PBS_PORT=8000
-PBS_HOST_URL=https://catalyst.springwire.ai
+PBS_HOST_URL=https://ads.thenexusengine.com
 HOST=0.0.0.0
 LOG_LEVEL=info
 
@@ -245,7 +245,7 @@ docker compose up -d
 
 | Feature | Development | Staging | Production |
 |---------|------------|---------|-----------|
-| **Domain** | localhost | staging.springwire.ai | catalyst.springwire.ai |
+| **Domain** | localhost | staging.springwire.ai | ads.thenexusengine.com |
 | **SSL** | ❌ HTTP | ✅ HTTPS | ✅ HTTPS |
 | **Log Level** | debug | info | info |
 | **CORS** | * (all) | Test domains | Real publishers |
@@ -313,9 +313,9 @@ docker compose up --no-start
 
 ---
 
-## For catalyst.springwire.ai
+## For ads.thenexusengine.com
 
-Since **catalyst.springwire.ai is PRODUCTION**, your colleague should:
+Since **ads.thenexusengine.com is PRODUCTION**, your colleague should:
 
 1. **Use `.env.production`** as the template
 2. **Customize** for real publishers:
@@ -345,7 +345,7 @@ Since **catalyst.springwire.ai is PRODUCTION**, your colleague should:
 - ⚠️ Can't afford downtime
 - ⚠️ Need to test integrations
 
-**For catalyst.springwire.ai**: Probably don't need staging initially. Start with production, monitor closely.
+**For ads.thenexusengine.com**: Probably don't need staging initially. Start with production, monitor closely.
 
 ---
 
@@ -360,7 +360,7 @@ grep PBS_HOST_URL /opt/catalyst/.env
 # Should show:
 # Development: PBS_HOST_URL=http://localhost:8000
 # Staging: PBS_HOST_URL=https://staging.springwire.ai
-# Production: PBS_HOST_URL=https://catalyst.springwire.ai
+# Production: PBS_HOST_URL=https://ads.thenexusengine.com
 ```
 
 ---
@@ -370,7 +370,7 @@ grep PBS_HOST_URL /opt/catalyst/.env
 **Simple approach for this deployment:**
 
 1. **Development** = Your local machine (localhost)
-2. **Production** = catalyst.springwire.ai (colleague's server)
+2. **Production** = ads.thenexusengine.com (colleague's server)
 3. **(Optional) Staging** = If needed later
 
 **One docker-compose.yml** works for all environments
@@ -381,7 +381,7 @@ grep PBS_HOST_URL /opt/catalyst/.env
 ---
 
 **Decision for this deployment**:
-- ✅ Production only (catalyst.springwire.ai)
+- ✅ Production only (ads.thenexusengine.com)
 - ✅ Use `.env.production` template
 - ✅ Add staging later if needed
 - ✅ Development on local machines
@@ -390,4 +390,4 @@ grep PBS_HOST_URL /opt/catalyst/.env
 
 **Last Updated**: 2025-01-13
 **Strategy**: Simple .env file switching
-**Current Target**: Production (catalyst.springwire.ai)
+**Current Target**: Production (ads.thenexusengine.com)

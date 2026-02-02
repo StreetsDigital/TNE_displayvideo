@@ -9,7 +9,7 @@ Enable **canary deployments** by sending a small percentage (5%) of production t
 ```
 Internet Traffic (100%)
         ↓
-catalyst.springwire.ai
+ads.thenexusengine.com
         ↓
     Nginx (splits traffic)
     ├─ 95% → Production Catalyst
@@ -78,7 +78,7 @@ catalyst.springwire.ai
 
 **Key Points:**
 - ✅ Same server (no extra hardware needed)
-- ✅ Same domain (catalyst.springwire.ai)
+- ✅ Same domain (ads.thenexusengine.com)
 - ✅ Separate Redis instances (data isolation)
 - ✅ Different resource limits (staging gets less)
 - ✅ Independent configurations (.env.production vs .env.staging)
@@ -203,7 +203,7 @@ docker compose -f docker-compose-split.yml ps
 ```bash
 # Make 20 requests and check backend header
 for i in {1..20}; do
-  curl -I https://catalyst.springwire.ai/health 2>&1 | grep X-Backend
+  curl -I https://ads.thenexusengine.com/health 2>&1 | grep X-Backend
 done
 
 # Expected output (approximately):
@@ -232,7 +232,7 @@ docker compose -f docker-compose-split.yml logs catalyst-staging | grep -i error
 ### Check Split Status Endpoint
 
 ```bash
-curl https://catalyst.springwire.ai/admin/split-status
+curl https://ads.thenexusengine.com/admin/split-status
 
 # Returns:
 {
@@ -445,7 +445,7 @@ docker compose -f docker-compose-split.yml exec nginx cat /etc/nginx/nginx.conf 
 **Test locally:**
 ```bash
 for i in {1..100}; do
-  curl -I https://catalyst.springwire.ai/health 2>&1 | grep X-Backend
+  curl -I https://ads.thenexusengine.com/health 2>&1 | grep X-Backend
 done | sort | uniq -c
 
 # Should see roughly:
@@ -477,7 +477,7 @@ add_header X-Container-ID $hostname always;
 
 **Check with:**
 ```bash
-curl -I https://catalyst.springwire.ai/health
+curl -I https://ads.thenexusengine.com/health
 ```
 
 ### Problem: Uneven traffic distribution
@@ -566,7 +566,7 @@ docker compose -f docker-compose-split.yml exec nginx nginx -s reload
 docker compose -f docker-compose-split.yml exec nginx nginx -t
 
 # View split status
-curl https://catalyst.springwire.ai/admin/split-status
+curl https://ads.thenexusengine.com/admin/split-status
 ```
 
 ---
@@ -620,4 +620,4 @@ docker compose -f docker-compose.yml up -d
 **Last Updated**: 2025-01-13
 **Split Ratio**: 95% Production / 5% Staging
 **Algorithm**: Nginx split_clients
-**Deployment**: catalyst.springwire.ai
+**Deployment**: ads.thenexusengine.com

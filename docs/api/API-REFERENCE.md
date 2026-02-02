@@ -1,7 +1,7 @@
 # TNE Catalyst API Reference
 
 **Version:** 1.0
-**Base URL:** `https://catalyst.springwire.ai`
+**Base URL:** `https://ads.thenexusengine.com`
 **Protocol:** OpenRTB 2.5
 
 ---
@@ -53,7 +53,7 @@ Submit a bid request to the ad exchange.
 **Request:**
 ```http
 POST /openrtb2/auction HTTP/1.1
-Host: catalyst.springwire.ai
+Host: ads.thenexusengine.com
 Content-Type: application/json
 
 {
@@ -478,10 +478,10 @@ Retry-After: 60
 
 ## Support
 
-**Technical Support:** tech@springwire.ai
-**Account Management:** publishers@springwire.ai
-**Documentation:** https://docs.springwire.ai
-**Status Page:** https://status.springwire.ai
+**Technical Support:** ops@thenexusengine.io
+**Account Management:** ops@thenexusengine.io
+**Documentation:** https://docs.thenexusengine.com
+**Status Page:** https://status.thenexusengine.com
 
 ---
 

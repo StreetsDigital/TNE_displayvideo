@@ -2,7 +2,7 @@
 # Test Geographic-Based Consent Filtering
 # This script demonstrates how Catalyst validates consent based on user geographic location
 
-CATALYST_URL="${CATALYST_URL:-https://catalyst.springwire.ai}"
+CATALYST_URL="${CATALYST_URL:-https://ads.thenexusengine.com}"
 PUBLISHER_ID="${PUBLISHER_ID:-pub123}"
 
 # Colors for output

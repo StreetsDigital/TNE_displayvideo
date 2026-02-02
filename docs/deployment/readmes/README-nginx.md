@@ -1,14 +1,14 @@
 # nginx.conf - Reverse Proxy Configuration
 
 ## Purpose
-Nginx acts as the reverse proxy and SSL termination point for catalyst.springwire.ai. It handles all incoming traffic and forwards requests to the Catalyst container.
+Nginx acts as the reverse proxy and SSL termination point for ads.thenexusengine.com. It handles all incoming traffic and forwards requests to the Catalyst container.
 
 ## What This File Does
 
 ```
 Internet Traffic
       ↓
-catalyst.springwire.ai:443 (HTTPS)
+ads.thenexusengine.com:443 (HTTPS)
       ↓
    NGINX (this config)
       ↓
@@ -19,9 +19,9 @@ catalyst:8000 (internal Docker network)
 
 ### 1. Domain Name
 ```nginx
-server_name catalyst.springwire.ai;
+server_name ads.thenexusengine.com;
 ```
-**Decision**: Hardcoded to catalyst.springwire.ai
+**Decision**: Hardcoded to ads.thenexusengine.com
 **Why**: Single-server deployment, specific to this integration
 **To Change**: Edit this line if domain changes
 
@@ -124,7 +124,7 @@ worker_connections 2048;
 ```
 Publisher Website
     ↓ (HTTPS POST)
-https://catalyst.springwire.ai/openrtb2/auction
+https://ads.thenexusengine.com/openrtb2/auction
     ↓ (Nginx receives)
 Rate limit check (50/s per IP) ✓
     ↓
@@ -143,7 +143,7 @@ Publisher Website
 ```
 Monitoring Tool
     ↓
-https://catalyst.springwire.ai/health
+https://ads.thenexusengine.com/health
     ↓ (Nginx receives)
 No rate limit (health checks exempt)
     ↓
@@ -258,27 +258,27 @@ ls -la /opt/catalyst/ssl/
 
 ### Test HTTP to HTTPS redirect
 ```bash
-curl -I http://catalyst.springwire.ai/health
+curl -I http://ads.thenexusengine.com/health
 # Should see: HTTP/1.1 301 Moved Permanently
-# Location: https://catalyst.springwire.ai/health
+# Location: https://ads.thenexusengine.com/health
 ```
 
 ### Test SSL configuration
 ```bash
-curl -I https://catalyst.springwire.ai/health
+curl -I https://ads.thenexusengine.com/health
 # Should see: HTTP/2 200
 ```
 
 ### Test rate limiting
 ```bash
 # Send 100 requests quickly
-for i in {1..100}; do curl https://catalyst.springwire.ai/health; done
+for i in {1..100}; do curl https://ads.thenexusengine.com/health; done
 # After ~50 requests, should see 429 errors
 ```
 
 ### Test proxy to Catalyst
 ```bash
-curl -X POST https://catalyst.springwire.ai/openrtb2/auction \
+curl -X POST https://ads.thenexusengine.com/openrtb2/auction \
   -H "Content-Type: application/json" \
   -d '{"id":"test","imp":[{"id":"1","banner":{"w":300,"h":250}}]}'
 ```
@@ -346,5 +346,5 @@ docker compose restart nginx
 ---
 
 **Last Updated**: 2025-01-13
-**Deployment**: catalyst.springwire.ai
+**Deployment**: ads.thenexusengine.com
 **Maintainer**: The Nexus Engine / Springwire

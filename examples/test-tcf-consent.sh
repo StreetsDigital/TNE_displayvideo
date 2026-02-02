@@ -2,7 +2,7 @@
 # Test TCF Vendor Consent Validation
 # This script demonstrates how Catalyst validates TCF v2 vendor consent for GDPR compliance
 
-CATALYST_URL="${CATALYST_URL:-https://catalyst.springwire.ai}"
+CATALYST_URL="${CATALYST_URL:-https://ads.thenexusengine.com}"
 PUBLISHER_ID="${PUBLISHER_ID:-pub123}"
 
 # Colors for output

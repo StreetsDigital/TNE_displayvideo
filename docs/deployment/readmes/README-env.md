@@ -11,7 +11,7 @@ This document explains **every environment variable** used by TNE Catalyst. Unde
 ```
 deployment/
 ├── .env.dev          ← Local development (localhost)
-├── .env.production   ← Production (catalyst.springwire.ai)
+├── .env.production   ← Production (ads.thenexusengine.com)
 └── .env.staging      ← Staging (5% traffic testing)
 ```
 
@@ -41,7 +41,7 @@ docker compose -f docker-compose-split.yml up -d
 **Examples**:
 ```bash
 PBS_HOST_URL=http://localhost:8000          # Development
-PBS_HOST_URL=https://catalyst.springwire.ai # Production
+PBS_HOST_URL=https://ads.thenexusengine.com # Production
 ```
 
 **Used For**:
@@ -375,7 +375,7 @@ IDR_ENABLED=true   # After IDR service ready
 **Examples**:
 ```bash
 IDR_URL=http://localhost:8080              # Development
-IDR_URL=https://idr.catalyst.springwire.ai # Production
+IDR_URL=https://idr.ads.thenexusengine.com # Production
 ```
 
 ### IDR_TIMEOUT
@@ -965,7 +965,7 @@ LOG_FORMAT=text
 
 ### Production (.env.production)
 ```bash
-PBS_HOST_URL=https://catalyst.springwire.ai
+PBS_HOST_URL=https://ads.thenexusengine.com
 DB_HOST=postgres
 DB_SSL_MODE=require
 REDIS_HOST=redis-prod
@@ -978,7 +978,7 @@ LOG_FORMAT=json
 
 ### Staging (.env.staging)
 ```bash
-PBS_HOST_URL=https://catalyst.springwire.ai
+PBS_HOST_URL=https://ads.thenexusengine.com
 DB_HOST=postgres
 DB_SSL_MODE=require
 REDIS_HOST=redis-staging  # Separate Redis!
@@ -1086,4 +1086,4 @@ docker compose logs catalyst-prod
 
 **Last Updated**: 2025-01-13
 **Files**: .env.dev, .env.production, .env.staging
-**Deployment**: catalyst.springwire.ai
+**Deployment**: ads.thenexusengine.com

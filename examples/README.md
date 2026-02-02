@@ -7,7 +7,7 @@ This directory contains example OpenRTB bid requests and test scripts for Cataly
 Catalyst is a **server-side PBS (Prebid Server)** that receives OpenRTB 2.x bid requests. Your client (JavaScript, server-side integration, or other) constructs these requests and sends them to:
 
 ```
-POST https://catalyst.springwire.ai/openrtb2/auction
+POST https://ads.thenexusengine.com/openrtb2/auction
 Content-Type: application/json
 ```
 
@@ -108,14 +108,14 @@ See **[GEO-CONSENT-GUIDE.md](../GEO-CONSENT-GUIDE.md)** for complete documentati
 
 **Single bidder (Rubicon):**
 ```bash
-curl -X POST https://catalyst.springwire.ai/openrtb2/auction \
+curl -X POST https://ads.thenexusengine.com/openrtb2/auction \
   -H "Content-Type: application/json" \
   -d @rubicon-bid-request.json
 ```
 
 **Multiple bidders:**
 ```bash
-curl -X POST https://catalyst.springwire.ai/openrtb2/auction \
+curl -X POST https://ads.thenexusengine.com/openrtb2/auction \
   -H "Content-Type: application/json" \
   -d @multi-bidder-request.json
 ```
@@ -253,7 +253,7 @@ sed -i '' 's/"zoneId": 3767186/"zoneId": YOUR_ZONE_ID/g' *.json
 
 ```bash
 # Save as my-test-request.json
-curl -X POST https://catalyst.springwire.ai/openrtb2/auction \
+curl -X POST https://ads.thenexusengine.com/openrtb2/auction \
   -H "Content-Type: application/json" \
   -d @my-test-request.json | jq '.'
 ```
