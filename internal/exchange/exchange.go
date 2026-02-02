@@ -2333,8 +2333,10 @@ func (e *Exchange) buildBidExtension(vb ValidatedBid) *openrtb.BidExt {
 	targeting := map[string]string{
 		"hb_pb":                          priceBucket,
 		"hb_bidder":                      displayBidderCode,
+		"hb_format":                      bidType,
 		"hb_pb_" + displayBidderCode:     priceBucket,
 		"hb_bidder_" + displayBidderCode: displayBidderCode,
+		"hb_format_" + displayBidderCode: bidType,
 	}
 
 	// Only add hb_size for bids that have valid dimensions
@@ -2349,6 +2351,22 @@ func (e *Exchange) buildBidExtension(vb ValidatedBid) *openrtb.BidExt {
 	if bid.DealID != "" {
 		targeting["hb_deal"] = bid.DealID
 		targeting["hb_deal_"+displayBidderCode] = bid.DealID
+	}
+
+	// Add creative/ad ID if present
+	adID := bid.CRID
+	if adID == "" {
+		adID = bid.AdID
+	}
+	if adID != "" {
+		targeting["hb_adid"] = adID
+		targeting["hb_adid_"+displayBidderCode] = adID
+	}
+
+	// Add advertiser domain if present
+	if len(bid.ADomain) > 0 && bid.ADomain[0] != "" {
+		targeting["hb_adomain"] = bid.ADomain[0]
+		targeting["hb_adomain_"+displayBidderCode] = bid.ADomain[0]
 	}
 
 	return &openrtb.BidExt{

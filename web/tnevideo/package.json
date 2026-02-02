@@ -1,0 +1,29 @@
+{
+  "name": "@tne/tnevideo",
+  "version": "1.0.0",
+  "description": "TNEVideo client-side SDK for TNE Catalyst Prebid Server integration",
+  "main": "dist/tnevideo.js",
+  "scripts": {
+    "build": "rollup -c",
+    "build:min": "MINIFY=true rollup -c",
+    "test": "jest --coverage",
+    "lint": "eslint src/",
+    "clean": "rm -rf dist/"
+  },
+  "devDependencies": {
+    "@rollup/plugin-terser": "^0.4.0",
+    "eslint": "^8.0.0",
+    "jest": "^29.0.0",
+    "jest-environment-jsdom": "^29.0.0",
+    "rollup": "^4.0.0"
+  },
+  "jest": {
+    "testEnvironment": "jsdom",
+    "testMatch": ["**/test/**/*.test.js"]
+  },
+  "files": [
+    "dist/",
+    "src/"
+  ],
+  "license": "MIT"
+}

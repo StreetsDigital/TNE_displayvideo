@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TNEVideo - Multi-Format Example</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 960px; margin: 2rem auto; padding: 0 1rem; }
+    h1 { color: #333; }
+    .info { background: #e8f4fd; border-left: 4px solid #2196F3; padding: 1rem; margin: 1rem 0; }
+    .layout { display: grid; grid-template-columns: 1fr 300px; gap: 2rem; margin: 2rem 0; }
+    .content { min-height: 400px; }
+    .sidebar { }
+    .ad-slot { border: 1px dashed #ccc; background: #f9f9f9; display: flex; align-items: center; justify-content: center; margin: 1rem 0; }
+    #banner-top { width: 728px; height: 90px; }
+    #sidebar-1 { width: 300px; height: 250px; }
+    #multi-1 { width: 300px; height: 250px; }
+    p { line-height: 1.6; color: #555; }
+    pre { background: #f5f5f5; padding: 1rem; overflow-x: auto; font-size: 0.85rem; }
+    .refresh-btn { background: #2196F3; color: #fff; border: none; padding: 0.5rem 1rem; cursor: pointer; font-size: 1rem; margin: 1rem 0; }
+    .refresh-btn:hover { background: #1976D2; }
+  </style>
+  <script src="../src/tnevideo.js"></script>
+</head>
+<body>
+  <h1>Multi-Format Ad Example</h1>
+
+  <div class="info">
+    <strong>Instructions:</strong> This page demonstrates multiple ad formats on a single page:
+    banner, outstream video, and multi-format slots. The refresh button triggers a new auction
+    (useful for infinite scroll or SPA scenarios).
+  </div>
+
+  <h2>728x90 Leaderboard</h2>
+  <div id="banner-top" class="ad-slot"></div>
+
+  <div class="layout">
+    <div class="content">
+      <h2>Article Content</h2>
+      <p>
+        Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor
+        incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud
+        exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.
+      </p>
+      <p>
+        Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu
+        fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa
+        qui officia deserunt mollit anim id est laborum.
+      </p>
+
+      <h3>Multi-Format Slot (Banner or Outstream Video)</h3>
+      <div id="multi-1" class="ad-slot"></div>
+    </div>
+
+    <div class="sidebar">
+      <h3>Sidebar</h3>
+      <div id="sidebar-1" class="ad-slot"></div>
+    </div>
+  </div>
+
+  <button class="refresh-btn" onclick="TNEVideo.refresh()">Refresh Ads</button>
+
+  <h2>Debug Log</h2>
+  <pre id="log"></pre>
+
+  <script>
+    var logEl = document.getElementById('log');
+    var origLog = console.log;
+    console.log = function() {
+      origLog.apply(console, arguments);
+      var args = Array.prototype.slice.call(arguments);
+      if (args[0] && args[0].toString().indexOf('[TNEVideo]') !== -1) {
+        logEl.textContent += args.join(' ') + '\n';
+      }
+    };
+
+    TNEVideo.init({
+      serverUrl: 'http://localhost:8000',
+      publisherId: 'pub-test-001',
+      gamNetworkId: '/19968336',
+      debug: true,
+
+      adUnits: [
+        {
+          code: 'banner-top',
+          mediaTypes: {
+            banner: { sizes: [[728, 90]] }
+          },
+          bids: {
+            demo: { placementId: 1 }
+          }
+        },
+        {
+          code: 'sidebar-1',
+          mediaTypes: {
+            banner: { sizes: [[300, 250], [300, 600]] }
+          },
+          bids: {
+            demo: { placementId: 2 }
+          }
+        },
+        {
+          code: 'multi-1',
+          mediaTypes: {
+            banner: { sizes: [[300, 250]] },
+            video: {
+              context: 'outstream',
+              playerSize: [300, 250],
+              mimes: ['video/mp4']
+            }
+          },
+          bids: {
+            demo: { placementId: 3 }
+          }
+        }
+      ],
+
+      onAuctionEnd: function(bids) {
+        logEl.textContent += '\n=== Auction Complete ===\n';
+      },
+
+      onBidWon: function(bid) {
+        logEl.textContent += 'Bid won: ' + bid.bidderCode + ' $' + bid.cpm + ' (' + (bid.mediaType || 'banner') + ')\n';
+      },
+
+      onError: function(err) {
+        logEl.textContent += '\n=== Error ===\n' + err.message + '\n';
+      }
+    });
+  </script>
+</body>
+</html>

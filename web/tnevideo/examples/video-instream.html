@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TNEVideo - Instream Video Example</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 800px; margin: 2rem auto; padding: 0 1rem; }
+    h1 { color: #333; }
+    .info { background: #e8f4fd; border-left: 4px solid #2196F3; padding: 1rem; margin: 1rem 0; }
+    .video-container { max-width: 640px; margin: 1rem 0; }
+    video { width: 100%; background: #000; }
+    pre { background: #f5f5f5; padding: 1rem; overflow-x: auto; font-size: 0.85rem; }
+  </style>
+  <script src="../src/tnevideo.js"></script>
+</head>
+<body>
+  <h1>Instream Video (Pre-Roll) Example</h1>
+
+  <div class="info">
+    <strong>Instructions:</strong> This page demonstrates instream video (pre-roll) ad integration.
+    The video player requests a VAST tag URL from GAM after the auction completes.
+    Open the browser console to see the VAST URL that would be passed to a video player.
+  </div>
+
+  <div class="video-container">
+    <video id="content-video" controls>
+      <source src="https://storage.googleapis.com/gvabox/media/samples/ForBiggerJoyrides.mp4" type="video/mp4">
+    </video>
+  </div>
+
+  <h2>Debug Log</h2>
+  <pre id="log"></pre>
+
+  <script>
+    var logEl = document.getElementById('log');
+    function appendLog(msg) {
+      logEl.textContent += msg + '\n';
+    }
+
+    var origLog = console.log;
+    console.log = function() {
+      origLog.apply(console, arguments);
+      var args = Array.prototype.slice.call(arguments);
+      if (args[0] && args[0].toString().indexOf('[TNEVideo]') !== -1) {
+        appendLog(args.join(' '));
+      }
+    };
+
+    TNEVideo.init({
+      serverUrl: 'http://localhost:8000',
+      publisherId: 'pub-test-001',
+      debug: true,
+
+      adUnits: [
+        {
+          code: 'preroll',
+          gamAdUnitPath: '/19968336/preroll',
+          mediaTypes: {
+            video: {
+              context: 'instream',
+              playerSize: [640, 360],
+              mimes: ['video/mp4'],
+              protocols: [2, 5],
+              maxduration: 30,
+              linearity: 1,
+              api: [2],
+              skip: 1,
+              skipafter: 5
+            }
+          },
+          bids: {
+            demo: { placementId: 10 }
+          }
+        }
+      ],
+
+      onAuctionEnd: function(bids) {
+        appendLog('\n=== Auction Complete ===');
+
+        // Build the VAST tag URL for the video player
+        var vastUrl = TNEVideo.buildVideoUrl({
+          adUnit: {
+            code: 'preroll',
+            mediaTypes: { video: { context: 'instream' } }
+          },
+          iu: '/19968336/preroll'
+        });
+
+        if (vastUrl) {
+          appendLog('VAST URL: ' + vastUrl);
+          appendLog('\nIn production, pass this URL to your video player:');
+          appendLog('  Video.js: videojs("player").ima({ adTagUrl: vastUrl })');
+          appendLog('  JW Player: jwplayer("player").setup({ advertising: { tag: vastUrl } })');
+        } else {
+          appendLog('No VAST URL available (no bids or cache not ready)');
+        }
+      },
+
+      onError: function(err) {
+        appendLog('\n=== Error ===\n' + err.message);
+      }
+    });
+  </script>
+</body>
+</html>

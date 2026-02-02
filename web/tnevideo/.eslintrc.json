@@ -1,0 +1,12 @@
+{
+  "env": {
+    "browser": true,
+    "es6": false
+  },
+  "rules": {
+    "no-var": "off",
+    "prefer-const": "off",
+    "no-unused-vars": ["warn", { "argsIgnorePattern": "^_" }],
+    "no-console": "off"
+  }
+}

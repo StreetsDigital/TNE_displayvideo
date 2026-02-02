@@ -265,6 +265,12 @@ func (s *Server) initHandlers() {
 
 	log.Info().Msg("Video endpoints registered: /video/vast, /video/openrtb, /video/event/*")
 
+	// Prebid Cache endpoint (required for video VAST redirect flows)
+	cacheHandler := endpoints.NewCacheHandler(s.redisClient)
+	mux.Handle("/cache", cacheHandler)
+
+	log.Info().Msg("Prebid Cache endpoint registered: /cache")
+
 	// Prometheus metrics endpoint
 	mux.Handle("/metrics", metrics.Handler())
 

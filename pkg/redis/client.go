@@ -126,6 +126,20 @@ func (c *Client) SMembers(ctx context.Context, key string) ([]string, error) {
 	return c.client.SMembers(ctx, key).Result()
 }
 
+// Set sets a key-value pair with an expiration duration
+func (c *Client) Set(ctx context.Context, key string, value interface{}, expiration time.Duration) error {
+	return c.client.Set(ctx, key, value, expiration).Err()
+}
+
+// Get gets a value by key. Returns empty string and nil error if key does not exist.
+func (c *Client) Get(ctx context.Context, key string) (string, error) {
+	result, err := c.client.Get(ctx, key).Result()
+	if errors.Is(err, redis.Nil) {
+		return "", nil
+	}
+	return result, err
+}
+
 // Ping tests the connection
 func (c *Client) Ping(ctx context.Context) error {
 	return c.client.Ping(ctx).Err()
