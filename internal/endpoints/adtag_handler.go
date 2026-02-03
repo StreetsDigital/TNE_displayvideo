@@ -306,6 +306,8 @@ func (h *AdTagHandler) writeJavaScriptResponse(w http.ResponseWriter, params *Ad
 func (h *AdTagHandler) writeHTMLResponse(w http.ResponseWriter, params *AdParams, bid *openrtb.Bid) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+	// Allow iframe embedding for ad serving
+	w.Header().Del("X-Frame-Options")
 
 	creative := sanitizeHTML(bid.AdM)
 
@@ -386,6 +388,8 @@ func (h *AdTagHandler) writeNoAdResponse(w http.ResponseWriter, divID string) {
 func (h *AdTagHandler) writeNoAdHTML(w http.ResponseWriter, width, height int) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+	// Allow iframe embedding for ad serving
+	w.Header().Del("X-Frame-Options")
 
 	html := fmt.Sprintf(`<!DOCTYPE html>
 <html>
