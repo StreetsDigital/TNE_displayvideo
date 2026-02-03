@@ -81,6 +81,12 @@ type minimalBidRequest struct {
 	} `json:"app"`
 }
 
+// RedisClient interface for Redis operations
+type RedisClient interface {
+	HGet(ctx context.Context, key, field string) (string, error)
+	Ping(ctx context.Context) error
+}
+
 // PublisherStore interface for database operations
 type PublisherStore interface {
 	GetByPublisherID(ctx context.Context, publisherID string) (publisher interface{}, err error)
@@ -144,6 +150,9 @@ const maxRequestBodySize = 1024 * 1024
 
 // Context key for storing publisher objects
 const publisherContextKey = "publisher"
+
+// Context key for storing publisher ID
+const publisherIDKey = "publisherID"
 
 // NewPublisherAuth creates a new publisher auth middleware
 func NewPublisherAuth(config *PublisherAuthConfig) *PublisherAuth {

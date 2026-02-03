@@ -2,9 +2,7 @@ package endpoints
 
 import (
 	"encoding/json"
-	"html/template"
 	"net/http"
-	"strconv"
 
 	"github.com/thenexusengine/tne_springwire/pkg/adtag"
 	"github.com/thenexusengine/tne_springwire/pkg/logger"

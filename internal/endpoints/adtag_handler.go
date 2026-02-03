@@ -460,26 +460,3 @@ func extractDomain(urlStr string) string {
 	}
 	return ""
 }
-
-// getClientIP extracts client IP from request
-func getClientIP(r *http.Request) string {
-	// Check X-Forwarded-For header
-	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-		ips := strings.Split(xff, ",")
-		if len(ips) > 0 {
-			return strings.TrimSpace(ips[0])
-		}
-	}
-
-	// Check X-Real-IP header
-	if xri := r.Header.Get("X-Real-IP"); xri != "" {
-		return xri
-	}
-
-	// Fall back to RemoteAddr
-	ip := r.RemoteAddr
-	if colon := strings.LastIndex(ip, ":"); colon != -1 {
-		ip = ip[:colon]
-	}
-	return ip
-}

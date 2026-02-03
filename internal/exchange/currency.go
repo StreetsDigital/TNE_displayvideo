@@ -50,7 +50,7 @@ func extractCustomRates(req *openrtb.BidRequest) (map[string]map[string]float64,
 
 	var ext RequestExt
 	if err := json.Unmarshal(req.Ext, &ext); err != nil {
-		logger.Warn("failed to parse request.ext", "error", err)
+		logger.Log.Warn().Err(err).Msg("failed to parse request.ext")
 		return nil, false
 	}
 
@@ -99,12 +99,12 @@ func (e *Exchange) convertBidCurrency(
 		return 0, fmt.Errorf("convert %s to %s: %w", bidCurrency, targetCurrency, err)
 	}
 
-	logger.Debug("converted bid currency",
-		"from", bidCurrency,
-		"to", targetCurrency,
-		"originalPrice", bidPrice,
-		"convertedPrice", convertedPrice,
-	)
+	logger.Log.Debug().
+		Str("from", bidCurrency).
+		Str("to", targetCurrency).
+		Float64("originalPrice", bidPrice).
+		Float64("convertedPrice", convertedPrice).
+		Msg("converted bid currency")
 
 	return convertedPrice, nil
 }
@@ -148,13 +148,13 @@ func (e *Exchange) convertBidderResponse(
 			)
 
 			if err != nil {
-				logger.Warn("failed to convert bid currency",
-					"bidder", bidderCode,
-					"bidId", bid.ID,
-					"from", bidCurrency,
-					"to", targetCurrency,
-					"error", err,
-				)
+				logger.Log.Warn().
+					Str("bidder", bidderCode).
+					Str("bidId", bid.ID).
+					Str("from", bidCurrency).
+					Str("to", targetCurrency).
+					Err(err).
+					Msg("failed to convert bid currency")
 				// Reject the bid if conversion fails
 				return fmt.Errorf("currency conversion failed for bid %s: %w", bid.ID, err)
 			}
