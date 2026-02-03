@@ -148,6 +148,125 @@ REDIS_PASSWORD=32 chars (cryptographically secure)
 JWT_SECRET=96 chars (cryptographically secure)
 ```
 
+### 5. ✅ Direct Ad Tag Integration
+
+**Status**: Fully Integrated & Ready for Testing
+
+**What Was Done:**
+- Created complete ad tag generation and serving system
+- Built client-side JavaScript SDK (tne-ads.js)
+- Integrated Google Ad Manager (GAM) 3rd party script support
+- Created interactive tag generator UI
+- Wired up all endpoints in server initialization
+- Comprehensive documentation for publishers and developers
+
+**Features:**
+- Support for any ad size (IAB standard + custom dimensions)
+- 4 integration methods: Async JS, GAM 3rd party script, Iframe, Sync JS
+- Auto-refresh ads support
+- Keyword and custom data targeting
+- Event tracking (impressions, clicks)
+- Command queue pattern for async loading
+- Interactive web-based tag generator
+
+**Files Created:**
+- `pkg/adtag/adtag.go` (550 lines) - Core ad tag generation
+- `internal/endpoints/adtag_handler.go` (450 lines) - Ad serving handlers
+- `internal/endpoints/adtag_generator.go` (320 lines) - Tag generator UI
+- `assets/tne-ads.js` (270 lines) - Client-side SDK
+- `docs/integrations/DIRECT_AD_TAG_INTEGRATION.md` (650 lines) - Publisher guide
+- `docs/integrations/ADTAG_SERVER_SETUP.md` (460 lines) - Server setup guide
+
+**Files Modified:**
+- `cmd/server/server.go` (+18 lines for endpoint registration)
+
+**Endpoints Added:**
+- `GET /ad/js` - JavaScript ad serving
+- `GET /ad/iframe` - Iframe ad serving
+- `GET /ad/gam` - GAM 3rd party script
+- `GET /ad/track` - Event tracking (impression/click)
+- `GET /admin/adtag/generator` - Tag generator UI
+- `POST /admin/adtag/generate` - Tag generation API
+- `GET /assets/tne-ads.js` - Client SDK
+
+**Integration Methods:**
+
+1. **Async JavaScript** (Recommended)
+   - Non-blocking page load
+   - Auto-refresh support
+   - Advanced targeting
+
+2. **GAM 3rd Party Script**
+   - Seamless Google Ad Manager integration
+   - Works in GAM creative templates
+   - Supports GAM macros (%%WIDTH%%, %%HEIGHT%%)
+
+3. **Iframe**
+   - Complete security isolation
+   - No JavaScript conflicts
+   - Works everywhere
+
+4. **Sync JavaScript**
+   - Simple one-line code
+   - Legacy browser support
+
+**Common Ad Sizes Supported:**
+- Desktop: 728x90, 970x250, 300x250, 300x600, 160x600
+- Mobile: 320x50, 320x100, 300x250
+- Video: 1920x1080, 640x480, 480x360
+- Custom: Any width × height
+
+**Usage Example:**
+```html
+<!-- Async JavaScript Integration -->
+<div id="tne-ad-1" style="width:300px;height:250px;"></div>
+<script>
+var tne = tne || {};
+tne.cmd = tne.cmd || [];
+tne.cmd.push(function() {
+  tne.display({
+    publisherId: 'pub-123456',
+    placementId: 'homepage-banner',
+    divId: 'tne-ad-1',
+    size: [300, 250],
+    serverUrl: 'https://ads.thenexusengine.com',
+    keywords: ['tech', 'news'],
+    refreshRate: 30
+  });
+});
+</script>
+<script async src="https://ads.thenexusengine.com/assets/tne-ads.js"></script>
+```
+
+**Tag Generator:**
+```bash
+# Access interactive UI
+open http://localhost:8000/admin/adtag/generator
+
+# Features:
+- Publisher/Placement ID input
+- Ad size presets (300x250, 728x90, etc.)
+- Format selection (Async, GAM, Iframe, Sync)
+- Live code preview
+- One-click copy
+- Test preview
+```
+
+**Testing:**
+```bash
+# Test JavaScript ad endpoint
+curl "http://localhost:8000/ad/js?pub=test-pub&placement=test&div=ad-1&w=300&h=250"
+
+# Test iframe endpoint
+curl "http://localhost:8000/ad/iframe?pub=test-pub&placement=test&w=728&h=90"
+
+# Open tag generator
+open http://localhost:8000/admin/adtag/generator
+
+# Check SDK loads
+curl http://localhost:8000/assets/tne-ads.js
+```
+
 ## Integration Architecture
 
 ### Server Initialization Flow
@@ -228,9 +347,17 @@ JWT_SECRET=96 chars (cryptographically secure)
 - `POST /video/openrtb` - OpenRTB video auction
 - `POST /video/event` - Video event tracking
 
+### Ad Tag Endpoints
+- `GET /ad/js` - JavaScript ad serving
+- `GET /ad/iframe` - Iframe ad serving
+- `GET /ad/gam` - GAM 3rd party script
+- `GET /ad/track` - Event tracking
+
 ### Admin Endpoints
 - `GET /admin/circuit-breaker` - Circuit breaker stats
-- `GET /admin/currency` - Currency converter stats ← NEW
+- `GET /admin/currency` - Currency converter stats
+- `GET /admin/adtag/generator` - Ad tag generator UI
+- `POST /admin/adtag/generate` - Ad tag generation API
 - `GET /admin/dashboard` - Admin dashboard
 - `GET /admin/metrics` - Metrics API
 - `GET /admin/publishers` - Publisher management
