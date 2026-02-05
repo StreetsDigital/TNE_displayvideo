@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Catalyst SDK - User Sync Test</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 1200px;
+      margin: 20px auto;
+      padding: 20px;
+      background-color: #f5f5f5;
+    }
+    .container {
+      background: white;
+      padding: 20px;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      margin-bottom: 20px;
+    }
+    h1 {
+      color: #333;
+      margin-top: 0;
+    }
+    h2 {
+      color: #666;
+      border-bottom: 2px solid #007bff;
+      padding-bottom: 5px;
+    }
+    .status {
+      padding: 10px;
+      margin: 10px 0;
+      border-radius: 4px;
+      font-weight: bold;
+    }
+    .status.success {
+      background-color: #d4edda;
+      color: #155724;
+      border: 1px solid #c3e6cb;
+    }
+    .status.error {
+      background-color: #f8d7da;
+      color: #721c24;
+      border: 1px solid #f5c6cb;
+    }
+    .status.info {
+      background-color: #d1ecf1;
+      color: #0c5460;
+      border: 1px solid #bee5eb;
+    }
+    #console-log {
+      background-color: #1e1e1e;
+      color: #d4d4d4;
+      padding: 15px;
+      border-radius: 4px;
+      font-family: 'Courier New', monospace;
+      font-size: 12px;
+      max-height: 400px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+    }
+    .log-entry {
+      margin: 2px 0;
+      padding: 2px 0;
+      border-bottom: 1px solid #333;
+    }
+    button {
+      background-color: #007bff;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+      margin-right: 10px;
+    }
+    button:hover {
+      background-color: #0056b3;
+    }
+    button:disabled {
+      background-color: #6c757d;
+      cursor: not-allowed;
+    }
+    .sync-pixels {
+      margin-top: 20px;
+    }
+    .sync-pixels h3 {
+      color: #666;
+      margin-bottom: 10px;
+    }
+    .pixel-item {
+      background-color: #f8f9fa;
+      padding: 10px;
+      margin: 5px 0;
+      border-radius: 4px;
+      border-left: 3px solid #007bff;
+    }
+    .pixel-type {
+      font-weight: bold;
+      color: #007bff;
+    }
+    .config-section {
+      background-color: #f8f9fa;
+      padding: 15px;
+      border-radius: 4px;
+      margin: 10px 0;
+    }
+    .config-item {
+      margin: 5px 0;
+      font-family: 'Courier New', monospace;
+      font-size: 13px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🔄 Catalyst SDK User Sync Test</h1>
+    <p>This page tests the automatic user ID synchronization feature of the Catalyst SDK.</p>
+
+    <div class="status info" id="init-status">
+      Initializing SDK...
+    </div>
+
+    <div class="config-section">
+      <h3>Configuration</h3>
+      <div class="config-item">Account ID: <strong>icisic-media</strong></div>
+      <div class="config-item">Server URL: <strong id="server-url"></strong></div>
+      <div class="config-item">User Sync Enabled: <strong>true</strong></div>
+      <div class="config-item">Bidders: <strong>kargo, rubicon, pubmatic, sovrn, triplelift</strong></div>
+      <div class="config-item">Sync Delay: <strong>1000ms</strong></div>
+      <div class="config-item">Max Syncs: <strong>5</strong></div>
+    </div>
+
+    <div>
+      <button onclick="testUserSync()">Trigger User Sync Manually</button>
+      <button onclick="clearConsole()">Clear Console</button>
+      <button onclick="inspectSyncElements()">Inspect Sync Elements</button>
+    </div>
+  </div>
+
+  <div class="container">
+    <h2>Console Output</h2>
+    <div id="console-log"></div>
+  </div>
+
+  <div class="container sync-pixels">
+    <h2>Fired Sync Pixels/Iframes</h2>
+    <div id="sync-elements">
+      <p style="color: #666;">Waiting for sync to complete...</p>
+    </div>
+  </div>
+
+  <!-- Load Catalyst SDK -->
+  <script src="catalyst-sdk.js"></script>
+
+  <script>
+    // Capture console.log output
+    var consoleOutput = [];
+    var originalLog = console.log;
+    console.log = function() {
+      var message = Array.prototype.slice.call(arguments).join(' ');
+      consoleOutput.push(message);
+      updateConsoleDisplay();
+      originalLog.apply(console, arguments);
+    };
+
+    function updateConsoleDisplay() {
+      var consoleDiv = document.getElementById('console-log');
+      consoleDiv.innerHTML = consoleOutput.map(function(msg) {
+        return '<div class="log-entry">' + escapeHtml(msg) + '</div>';
+      }).join('');
+      consoleDiv.scrollTop = consoleDiv.scrollHeight;
+    }
+
+    function escapeHtml(text) {
+      var div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    function clearConsole() {
+      consoleOutput = [];
+      updateConsoleDisplay();
+    }
+
+    function updateStatus(message, type) {
+      var statusDiv = document.getElementById('init-status');
+      statusDiv.textContent = message;
+      statusDiv.className = 'status ' + type;
+    }
+
+    function testUserSync() {
+      console.log('Manual user sync triggered');
+      if (window.catalyst && catalyst._performUserSync) {
+        catalyst._userSyncComplete = false; // Reset flag to allow re-sync
+        catalyst._performUserSync();
+      } else {
+        console.log('ERROR: Catalyst SDK not loaded or _performUserSync not available');
+      }
+    }
+
+    function inspectSyncElements() {
+      console.log('Inspecting sync elements in DOM...');
+
+      // Find all iframes with data-bidder attribute
+      var iframes = document.querySelectorAll('iframe[data-bidder]');
+      console.log('Found ' + iframes.length + ' sync iframes:');
+      iframes.forEach(function(iframe, index) {
+        console.log('  [' + index + '] Bidder: ' + iframe.getAttribute('data-bidder') + ', URL: ' + iframe.src);
+      });
+
+      // Find all images with data-bidder attribute
+      var images = document.querySelectorAll('img[data-bidder]');
+      console.log('Found ' + images.length + ' sync pixels:');
+      images.forEach(function(img, index) {
+        console.log('  [' + index + '] Bidder: ' + img.getAttribute('data-bidder') + ', URL: ' + img.src);
+      });
+
+      // Update the sync elements display
+      var syncDiv = document.getElementById('sync-elements');
+      var html = '';
+
+      if (iframes.length === 0 && images.length === 0) {
+        html = '<p style="color: #666;">No sync elements found yet. Check console for errors.</p>';
+      } else {
+        if (iframes.length > 0) {
+          html += '<h3>Iframes (' + iframes.length + ')</h3>';
+          iframes.forEach(function(iframe) {
+            html += '<div class="pixel-item">';
+            html += '<span class="pixel-type">IFRAME</span> - ';
+            html += '<strong>' + iframe.getAttribute('data-bidder') + '</strong><br>';
+            html += '<small>' + iframe.src + '</small>';
+            html += '</div>';
+          });
+        }
+
+        if (images.length > 0) {
+          html += '<h3>Pixels (' + images.length + ')</h3>';
+          images.forEach(function(img) {
+            html += '<div class="pixel-item">';
+            html += '<span class="pixel-type">PIXEL</span> - ';
+            html += '<strong>' + img.getAttribute('data-bidder') + '</strong><br>';
+            html += '<small>' + img.src + '</small>';
+            html += '</div>';
+          });
+        }
+      }
+
+      syncDiv.innerHTML = html;
+    }
+
+    // Initialize SDK with debug enabled
+    console.log('=== Catalyst SDK User Sync Test Starting ===');
+    console.log('');
+
+    // Display server URL
+    document.getElementById('server-url').textContent = window.location.protocol + '//' + window.location.host;
+
+    try {
+      catalyst.init({
+        accountId: 'icisic-media',
+        debug: true,
+        userSync: {
+          enabled: true,
+          bidders: ['kargo', 'rubicon', 'pubmatic', 'sovrn', 'triplelift'],
+          syncDelay: 1000,
+          iframeEnabled: true,
+          pixelEnabled: true,
+          maxSyncs: 5
+        }
+      });
+
+      updateStatus('✓ SDK Initialized - User sync will trigger in 1 second', 'success');
+      console.log('SDK initialized successfully');
+      console.log('Waiting for user sync to trigger...');
+
+      // Auto-inspect after 3 seconds to give sync time to complete
+      setTimeout(function() {
+        console.log('');
+        console.log('=== Auto-inspecting sync elements after 3 seconds ===');
+        inspectSyncElements();
+
+        // Check if any syncs were fired
+        if (catalyst._syncedBidders && catalyst._syncedBidders.length > 0) {
+          updateStatus('✓ User sync complete! Synced with: ' + catalyst._syncedBidders.join(', '), 'success');
+        } else {
+          updateStatus('⚠ User sync completed but no bidders were synced. Check console and network tab.', 'error');
+        }
+      }, 3000);
+
+    } catch (e) {
+      console.log('ERROR initializing SDK:', e);
+      updateStatus('✗ SDK Initialization Failed: ' + e.message, 'error');
+    }
+
+    // Monitor network requests (if available)
+    console.log('');
+    console.log('To verify user sync:');
+    console.log('1. Open DevTools Network tab');
+    console.log('2. Look for POST request to /cookie_sync');
+    console.log('3. Check for subsequent requests to bidder sync URLs');
+    console.log('4. Use "Inspect Sync Elements" button to see created iframes/pixels');
+    console.log('');
+  </script>
+</body>
+</html>
