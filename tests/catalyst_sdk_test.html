@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Catalyst SDK Test Page</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        h1 {
+            color: #333;
+        }
+        .test-section {
+            background: white;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .ad-slot {
+            border: 2px dashed #ccc;
+            background: #fafafa;
+            margin: 10px 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #999;
+            font-size: 14px;
+        }
+        .ad-slot-728x90 {
+            width: 728px;
+            height: 90px;
+        }
+        .ad-slot-300x250 {
+            width: 300px;
+            height: 250px;
+        }
+        .ad-slot-160x600 {
+            width: 160px;
+            height: 600px;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        .log {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 15px;
+            margin: 10px 0;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .log-entry {
+            margin: 5px 0;
+            padding: 3px 0;
+        }
+        .log-info { color: #0c5460; }
+        .log-success { color: #155724; }
+        .log-error { color: #721c24; }
+        .status {
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+        .status-pending { background: #fff3cd; color: #856404; }
+        .status-success { background: #d4edda; color: #155724; }
+        .status-error { background: #f8d7da; color: #721c24; }
+        .metrics {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin: 15px 0;
+        }
+        .metric-card {
+            background: #e9ecef;
+            padding: 15px;
+            border-radius: 4px;
+        }
+        .metric-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #007bff;
+        }
+        .metric-label {
+            font-size: 12px;
+            color: #6c757d;
+            text-transform: uppercase;
+        }
+    </style>
+</head>
+<body>
+    <h1>Catalyst SDK Test Page</h1>
+
+    <div class="test-section">
+        <h2>SDK Status</h2>
+        <div id="sdk-status" class="status status-pending">
+            Loading Catalyst SDK...
+        </div>
+        <div class="metrics">
+            <div class="metric-card">
+                <div class="metric-label">SDK Version</div>
+                <div class="metric-value" id="sdk-version">-</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">Load Time</div>
+                <div class="metric-value" id="load-time">-</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">Bid Requests</div>
+                <div class="metric-value" id="bid-requests">0</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">Avg Response Time</div>
+                <div class="metric-value" id="avg-response-time">-</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="test-section">
+        <h2>Test Controls</h2>
+        <button onclick="runBasicTest()">Test 1: Basic Bid Request</button>
+        <button onclick="runMultiSlotTest()">Test 2: Multiple Slots</button>
+        <button onclick="runTimeoutTest()">Test 3: Timeout Handling</button>
+        <button onclick="runCoordinationTest()">Test 4: Coordination Callback</button>
+        <button onclick="runPerformanceTest()">Test 5: Performance Test</button>
+        <button onclick="clearLog()">Clear Log</button>
+    </div>
+
+    <div class="test-section">
+        <h2>Ad Slots</h2>
+        <div id="ad-slot-leaderboard" class="ad-slot ad-slot-728x90">
+            Ad Slot: Leaderboard (728x90)
+        </div>
+        <div id="ad-slot-rectangle" class="ad-slot ad-slot-300x250">
+            Ad Slot: Rectangle (300x250)
+        </div>
+        <div id="ad-slot-skyscraper" class="ad-slot ad-slot-160x600">
+            Ad Slot: Skyscraper (160x600)
+        </div>
+    </div>
+
+    <div class="test-section">
+        <h2>Test Log</h2>
+        <div id="log" class="log"></div>
+    </div>
+
+    <!-- Mock biddersReady function -->
+    <script>
+        window.biddersReady = function(bidderName) {
+            log('Coordination callback received: biddersReady(\'' + bidderName + '\')', 'success');
+        };
+    </script>
+
+    <!-- Load Catalyst SDK -->
+    <script src="https://ads.thenexusengine.com/assets/catalyst-sdk.js"></script>
+
+    <script>
+        var sdkLoadStart = Date.now();
+        var metrics = {
+            bidRequests: 0,
+            responseTimes: []
+        };
+
+        // Check if SDK loaded
+        window.addEventListener('DOMContentLoaded', function() {
+            var loadTime = Date.now() - sdkLoadStart;
+            document.getElementById('load-time').textContent = loadTime + 'ms';
+
+            if (typeof window.catalyst !== 'undefined') {
+                document.getElementById('sdk-status').className = 'status status-success';
+                document.getElementById('sdk-status').textContent = 'Catalyst SDK loaded successfully';
+                document.getElementById('sdk-version').textContent = catalyst.version();
+                log('SDK loaded in ' + loadTime + 'ms', 'success');
+
+                // Initialize SDK
+                catalyst.init({
+                    accountId: 'test-account-123',
+                    serverUrl: 'https://ads.thenexusengine.com',
+                    timeout: 2800,
+                    debug: true
+                });
+
+                log('SDK initialized with accountId: test-account-123, serverUrl: https://ads.thenexusengine.com', 'info');
+            } else {
+                document.getElementById('sdk-status').className = 'status status-error';
+                document.getElementById('sdk-status').textContent = 'Failed to load Catalyst SDK';
+                log('Failed to load SDK', 'error');
+            }
+        });
+
+        function log(message, type) {
+            type = type || 'info';
+            var logDiv = document.getElementById('log');
+            var entry = document.createElement('div');
+            entry.className = 'log-entry log-' + type;
+            entry.textContent = '[' + new Date().toLocaleTimeString() + '] ' + message;
+            logDiv.appendChild(entry);
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
+
+        function clearLog() {
+            document.getElementById('log').innerHTML = '';
+            log('Log cleared', 'info');
+        }
+
+        function updateMetrics() {
+            document.getElementById('bid-requests').textContent = metrics.bidRequests;
+            if (metrics.responseTimes.length > 0) {
+                var avg = metrics.responseTimes.reduce((a, b) => a + b, 0) / metrics.responseTimes.length;
+                document.getElementById('avg-response-time').textContent = Math.round(avg) + 'ms';
+            }
+        }
+
+        function runBasicTest() {
+            log('Running Test 1: Basic Bid Request', 'info');
+
+            var startTime = Date.now();
+            metrics.bidRequests++;
+
+            catalyst.requestBids({
+                slots: [
+                    {
+                        divId: 'ad-slot-leaderboard',
+                        sizes: [[728, 90]],
+                        adUnitPath: '/test/leaderboard',
+                        position: 'atf'
+                    }
+                ]
+            }, function(bids) {
+                var elapsed = Date.now() - startTime;
+                metrics.responseTimes.push(elapsed);
+                updateMetrics();
+
+                log('Received ' + bids.length + ' bids in ' + elapsed + 'ms', 'success');
+
+                bids.forEach(function(bid) {
+                    log('Bid: divId=' + bid.divId + ', cpm=' + bid.cpm + ', size=' + bid.width + 'x' + bid.height, 'info');
+                });
+
+                if (bids.length === 0) {
+                    log('No bids returned (expected if no bidders configured)', 'info');
+                }
+            });
+        }
+
+        function runMultiSlotTest() {
+            log('Running Test 2: Multiple Slots', 'info');
+
+            var startTime = Date.now();
+            metrics.bidRequests++;
+
+            catalyst.requestBids({
+                slots: [
+                    {
+                        divId: 'ad-slot-leaderboard',
+                        sizes: [[728, 90], [970, 250]],
+                        adUnitPath: '/test/leaderboard'
+                    },
+                    {
+                        divId: 'ad-slot-rectangle',
+                        sizes: [[300, 250]],
+                        adUnitPath: '/test/rectangle'
+                    },
+                    {
+                        divId: 'ad-slot-skyscraper',
+                        sizes: [[160, 600]],
+                        adUnitPath: '/test/skyscraper'
+                    }
+                ],
+                page: {
+                    keywords: ['test', 'demo'],
+                    categories: ['IAB1', 'IAB2']
+                }
+            }, function(bids) {
+                var elapsed = Date.now() - startTime;
+                metrics.responseTimes.push(elapsed);
+                updateMetrics();
+
+                log('Multi-slot test completed in ' + elapsed + 'ms', 'success');
+                log('Received ' + bids.length + ' bids for 3 slots', 'info');
+            });
+        }
+
+        function runTimeoutTest() {
+            log('Running Test 3: Timeout Handling (50ms timeout)', 'info');
+
+            var startTime = Date.now();
+            metrics.bidRequests++;
+
+            // Override timeout temporarily
+            var originalTimeout = catalyst._config.timeout;
+            catalyst._config.timeout = 50; // Very short timeout
+
+            catalyst.requestBids({
+                slots: [
+                    {
+                        divId: 'ad-slot-leaderboard',
+                        sizes: [[728, 90]]
+                    }
+                ]
+            }, function(bids) {
+                var elapsed = Date.now() - startTime;
+                metrics.responseTimes.push(elapsed);
+                updateMetrics();
+
+                // Restore original timeout
+                catalyst._config.timeout = originalTimeout;
+
+                log('Timeout test completed in ' + elapsed + 'ms', elapsed <= 100 ? 'success' : 'error');
+                log('Bids returned: ' + bids.length + ' (should timeout and return empty)', 'info');
+            });
+        }
+
+        function runCoordinationTest() {
+            log('Running Test 4: Coordination Callback', 'info');
+            log('Watch for biddersReady(\'catalyst\') callback above', 'info');
+
+            var callbackReceived = false;
+            var originalBiddersReady = window.biddersReady;
+
+            window.biddersReady = function(bidderName) {
+                if (bidderName === 'catalyst') {
+                    callbackReceived = true;
+                    log('✓ Coordination callback test PASSED', 'success');
+                }
+                originalBiddersReady(bidderName);
+            };
+
+            metrics.bidRequests++;
+
+            catalyst.requestBids({
+                slots: [
+                    {
+                        divId: 'ad-slot-leaderboard',
+                        sizes: [[728, 90]]
+                    }
+                ]
+            }, function(bids) {
+                setTimeout(function() {
+                    if (!callbackReceived) {
+                        log('✗ Coordination callback test FAILED - biddersReady not called', 'error');
+                    }
+                    window.biddersReady = originalBiddersReady;
+                }, 100);
+            });
+        }
+
+        function runPerformanceTest() {
+            log('Running Test 5: Performance Test (10 concurrent requests)', 'info');
+
+            var completed = 0;
+            var startTime = Date.now();
+            var times = [];
+
+            for (var i = 0; i < 10; i++) {
+                (function(index) {
+                    var reqStart = Date.now();
+                    metrics.bidRequests++;
+
+                    catalyst.requestBids({
+                        slots: [
+                            {
+                                divId: 'ad-slot-leaderboard',
+                                sizes: [[728, 90]]
+                            }
+                        ]
+                    }, function(bids) {
+                        var reqTime = Date.now() - reqStart;
+                        times.push(reqTime);
+                        metrics.responseTimes.push(reqTime);
+                        completed++;
+
+                        if (completed === 10) {
+                            var totalTime = Date.now() - startTime;
+                            var avgTime = times.reduce((a, b) => a + b, 0) / times.length;
+                            var maxTime = Math.max(...times);
+                            var minTime = Math.min(...times);
+
+                            updateMetrics();
+
+                            log('Performance test completed:', 'success');
+                            log('  Total time: ' + totalTime + 'ms', 'info');
+                            log('  Avg response: ' + Math.round(avgTime) + 'ms', 'info');
+                            log('  Min response: ' + minTime + 'ms', 'info');
+                            log('  Max response: ' + maxTime + 'ms', 'info');
+
+                            if (avgTime > 2500) {
+                                log('⚠ Average response time exceeds 2500ms SLA target', 'error');
+                            } else {
+                                log('✓ Performance within SLA targets', 'success');
+                            }
+                        }
+                    });
+                })(i);
+            }
+        }
+    </script>
+</body>
+</html>
