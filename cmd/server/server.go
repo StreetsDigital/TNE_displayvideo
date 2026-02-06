@@ -10,9 +10,12 @@ import (
 
 	"github.com/thenexusengine/tne_springwire/internal/adapters"
 	_ "github.com/thenexusengine/tne_springwire/internal/adapters/appnexus"
-	_ "github.com/thenexusengine/tne_springwire/internal/adapters/demo"
+	_ "github.com/thenexusengine/tne_springwire/internal/adapters/kargo"
+	_ "github.com/thenexusengine/tne_springwire/internal/adapters/oms"
 	_ "github.com/thenexusengine/tne_springwire/internal/adapters/pubmatic"
 	_ "github.com/thenexusengine/tne_springwire/internal/adapters/rubicon"
+	_ "github.com/thenexusengine/tne_springwire/internal/adapters/sovrn"
+	_ "github.com/thenexusengine/tne_springwire/internal/adapters/triplelift"
 	pbsconfig "github.com/thenexusengine/tne_springwire/internal/config"
 	"github.com/thenexusengine/tne_springwire/internal/endpoints"
 	"github.com/thenexusengine/tne_springwire/internal/exchange"
@@ -297,8 +300,34 @@ func (s *Server) initHandlers() {
 
 	log.Info().Msg("Ad tag endpoints registered: /ad/js, /ad/iframe, /ad/gam, /ad/track")
 
+	// Catalyst MAI Publisher integration
+	// Load bidder mapping configuration
+	mappingPath := "config/bizbudding-all-bidders-mapping.json"
+	bidderMapping, err := endpoints.LoadBidderMapping(mappingPath)
+	if err != nil {
+		log.Fatal().Err(err).Str("path", mappingPath).Msg("Failed to load bidder mapping")
+	}
+	log.Info().
+		Str("path", mappingPath).
+		Int("ad_units", len(bidderMapping.AdUnits)).
+		Strs("bidders", bidderMapping.Publisher.DefaultBidders).
+		Msg("Loaded bidder mapping configuration")
+
+	catalystBidHandler := endpoints.NewCatalystBidHandler(s.exchange, bidderMapping)
+	mux.HandleFunc("/v1/bid", catalystBidHandler.HandleBidRequest)
+
+	log.Info().Msg("Catalyst MAI Publisher endpoint registered: /v1/bid")
+
 	// Static assets
 	mux.HandleFunc("/assets/tne-ads.js", endpoints.HandleAssets)
+	mux.HandleFunc("/assets/catalyst-sdk.js", endpoints.HandleCatalystSDK)
+
+	// IAB TCF Device Storage Disclosure (GDPR compliance)
+	// Standard .well-known path and convenience root path
+	mux.HandleFunc("/.well-known/tcf-disclosure.json", endpoints.HandleTCFDisclosure)
+	mux.HandleFunc("/tcf-disclosure.json", endpoints.HandleTCFDisclosure)
+
+	log.Info().Msg("TCF disclosure endpoints registered: /.well-known/tcf-disclosure.json, /tcf-disclosure.json")
 
 	// Prometheus metrics endpoint
 	mux.Handle("/metrics", metrics.Handler())
