@@ -16,9 +16,18 @@ type UID struct {
 	Expires time.Time `json:"expires"`
 }
 
-// Cookie holds all bidder user IDs
+// ConsentData holds TCF consent information
+type ConsentData struct {
+	TCFString string `json:"tcf_string,omitempty"` // IAB TCF consent string
+	Purposes  []int  `json:"purposes,omitempty"`   // Consented purpose IDs [1,2,3,4,7,10]
+	GDPRApplies *bool `json:"gdpr_applies,omitempty"` // nil=unknown, true=GDPR applies, false=doesn't apply
+	Updated   time.Time `json:"updated,omitempty"`  // When consent was last updated
+}
+
+// Cookie holds all bidder user IDs and consent data
 type Cookie struct {
 	UIDs    map[string]UID `json:"uids"`
+	Consent *ConsentData   `json:"consent,omitempty"` // TCF consent data
 	OptOut  bool           `json:"optout,omitempty"`
 	Created time.Time      `json:"created"`
 	mu      sync.RWMutex
@@ -280,4 +289,48 @@ func (c *Cookie) GetAllUIDs() map[string]string {
 		}
 	}
 	return result
+}
+
+// SetConsent sets the TCF consent data
+func (c *Cookie) SetConsent(tcfString string, purposes []int, gdprApplies *bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	c.Consent = &ConsentData{
+		TCFString:   tcfString,
+		Purposes:    purposes,
+		GDPRApplies: gdprApplies,
+		Updated:     time.Now().UTC(),
+	}
+}
+
+// GetConsent returns the TCF consent data
+func (c *Cookie) GetConsent() *ConsentData {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.Consent
+}
+
+// HasConsent returns true if consent data exists
+func (c *Cookie) HasConsent() bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.Consent != nil && c.Consent.TCFString != ""
+}
+
+// HasConsentForPurpose checks if user consented to a specific purpose
+func (c *Cookie) HasConsentForPurpose(purpose int) bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	if c.Consent == nil || c.Consent.Purposes == nil {
+		return false
+	}
+
+	for _, p := range c.Consent.Purposes {
+		if p == purpose {
+			return true
+		}
+	}
+	return false
 }
