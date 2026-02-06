@@ -214,15 +214,15 @@
       "maxAgeSeconds": 31536000,
       "cookieRefresh": true,
       "domain": "*.thenexusengine.com",
-      "purposes": [1]
+      "purposes": [1, 2, 3, 4, 7, 10]
     },
     {
       "identifier": "_nxs_session",
       "type": "cookie",
-      "maxAgeSeconds": 1800,
+      "maxAgeSeconds": 2592000,
       "cookieRefresh": true,
       "domain": "*.thenexusengine.com",
-      "purposes": [1]
+      "purposes": [1, 2, 3, 4, 7, 10]
     },
     {
       "identifier": "_nxs_consent",
@@ -230,7 +230,7 @@
       "maxAgeSeconds": 31536000,
       "cookieRefresh": false,
       "domain": "*.thenexusengine.com",
-      "purposes": [1]
+      "purposes": [1, 2, 3, 4, 7, 10]
     }
   ],
   "domains": [
