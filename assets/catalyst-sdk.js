@@ -101,7 +101,6 @@
       if (typeof callback === 'function') {
         callback([]);
       }
-      catalyst._notifyReady();
       return;
     }
 
@@ -110,7 +109,6 @@
       if (typeof callback === 'function') {
         callback([]);
       }
-      catalyst._notifyReady();
       return;
     }
 
@@ -189,7 +187,6 @@
         callback([]);
       }
 
-      catalyst._notifyReady();
       delete catalyst._bidRequests[requestId];
     }, timeoutMs);
 
@@ -218,7 +215,6 @@
         if (typeof callback === 'function') {
           callback([]);
         }
-        catalyst._notifyReady();
         return;
       }
 
@@ -228,8 +224,6 @@
       if (typeof callback === 'function') {
         callback(bids);
       }
-
-      catalyst._notifyReady();
     });
   };
 
@@ -279,18 +273,11 @@
   /**
    * Notify MAI Publisher that bids are ready
    * @private
+   * @deprecated This function is no longer used. Catalyst now relies on callbacks only.
    */
   catalyst._notifyReady = function() {
-    if (typeof window.biddersReady === 'function') {
-      catalyst.log('Calling biddersReady(\'catalyst\')');
-      try {
-        window.biddersReady('catalyst');
-      } catch (e) {
-        catalyst.log('Error calling biddersReady:', e);
-      }
-    } else {
-      catalyst.log('Warning: window.biddersReady() not found');
-    }
+    // No-op: Callback pattern is now used instead of global function calls
+    // This function is kept for backwards compatibility but does nothing
   };
 
   /**
