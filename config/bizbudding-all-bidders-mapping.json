@@ -1,0 +1,266 @@
+{
+  "publisher": {
+    "publisherId": "icisic-media",
+    "domain": "totalprosports.com",
+    "defaultBidders": [
+      "rubicon",
+      "kargo",
+      "sovrn",
+      "aniview",
+      "pubmatic",
+      "triplelift"
+    ]
+  },
+  "adUnits": {
+    "totalprosports.com/billboard": {
+      "rubicon": {
+        "accountId": 26298,
+        "siteId": 556630,
+        "zoneId": 3767186,
+        "bidonmultiformat": false
+      },
+      "kargo": {
+        "placementId": "_o9n8eh8Lsw"
+      },
+      "sovrn": {
+        "tagid": 1294952
+      },
+      "aniview": {
+        "publisherId": "66aa757144c99c7ca504e937",
+        "channelId": "6806a79f20173d1cde0a4895"
+      },
+      "pubmatic": {
+        "publisherId": 166938,
+        "adSlot": 7079290
+      },
+      "triplelift": {
+        "inventoryCode": "BizBudding_RON_NativeFlex_pbc2s"
+      }
+    },
+    "totalprosports.com/billboard-wide": {
+      "rubicon": {
+        "accountId": 26298,
+        "siteId": 556630,
+        "zoneId": 3775672,
+        "bidonmultiformat": false
+      },
+      "kargo": {
+        "placementId": "_skuLuovqg9"
+      },
+      "sovrn": {
+        "tagid": 1277815
+      },
+      "aniview": {
+        "publisherId": "66aa757144c99c7ca504e937",
+        "channelId": "6806a79f20173d1cde0a4895"
+      },
+      "pubmatic": {
+        "publisherId": 166938,
+        "adSlot": 7079290
+      },
+      "triplelift": {
+        "inventoryCode": "BizBudding_RON_NativeFlex_pbc2s"
+      }
+    },
+    "totalprosports.com/leaderboard": {
+      "rubicon": {
+        "accountId": 26298,
+        "siteId": 556630,
+        "zoneId": 3767184,
+        "bidonmultiformat": false
+      },
+      "kargo": {
+        "placementId": "_o9n8eh8Lsw"
+      },
+      "sovrn": {
+        "tagid": 1277816
+      },
+      "aniview": {
+        "publisherId": "66aa757144c99c7ca504e937",
+        "channelId": "6806a79f20173d1cde0a4895"
+      },
+      "pubmatic": {
+        "publisherId": 166938,
+        "adSlot": 7079290
+      },
+      "triplelift": {
+        "inventoryCode": "BizBudding_RON_HDX_pbc2s"
+      }
+    },
+    "totalprosports.com/leaderboard-wide": {
+      "rubicon": {
+        "accountId": 26298,
+        "siteId": 556630,
+        "zoneId": 3775674,
+        "bidonmultiformat": false
+      },
+      "kargo": {
+        "placementId": "_o9n8eh8Lsw"
+      },
+      "sovrn": {
+        "tagid": 1277814
+      },
+      "aniview": {
+        "publisherId": "66aa757144c99c7ca504e937",
+        "channelId": "6806a79f20173d1cde0a4895"
+      },
+      "pubmatic": {
+        "publisherId": 166938,
+        "adSlot": 7079290
+      },
+      "triplelift": {
+        "inventoryCode": "BizBudding_RON_HDX_pbc2s"
+      }
+    },
+    "totalprosports.com/rectangle-medium": {
+      "rubicon": {
+        "accountId": 26298,
+        "siteId": 556630,
+        "zoneId": 3767182,
+        "bidonmultiformat": false
+      },
+      "kargo": {
+        "placementId": "_dZdSc3mrpg"
+      },
+      "sovrn": {
+        "tagid": 1277818
+      },
+      "aniview": {
+        "publisherId": "66aa757144c99c7ca504e937",
+        "channelId": "6806a79f20173d1cde0a4895"
+      },
+      "pubmatic": {
+        "publisherId": 166938,
+        "adSlot": 7079290
+      },
+      "triplelift": {
+        "inventoryCode": "BizBudding_RON_NativeFlex_pbc2s"
+      }
+    },
+    "totalprosports.com/skyscraper": {
+      "rubicon": {
+        "accountId": 26298,
+        "siteId": 556630,
+        "zoneId": 3952223,
+        "bidonmultiformat": false
+      },
+      "kargo": {
+        "placementId": "_trvKK0NhUx"
+      },
+      "sovrn": {
+        "tagid": 1294953
+      },
+      "aniview": {
+        "publisherId": "66aa757144c99c7ca504e937",
+        "channelId": "6806a79f20173d1cde0a4895"
+      },
+      "pubmatic": {
+        "publisherId": 166938,
+        "adSlot": 7079290
+      },
+      "triplelift": {
+        "inventoryCode": "BizBudding_RON_HDX_pbc2s"
+      }
+    },
+    "totalprosports.com/skyscraper-wide": {
+      "rubicon": {
+        "accountId": 26298,
+        "siteId": 556630,
+        "zoneId": 3775676,
+        "bidonmultiformat": false
+      },
+      "kargo": {
+        "placementId": "_xPHrEbaqUL"
+      },
+      "sovrn": {
+        "tagid": 1277817
+      },
+      "aniview": {
+        "publisherId": "66aa757144c99c7ca504e937",
+        "channelId": "6806a79f20173d1cde0a4895"
+      },
+      "pubmatic": {
+        "publisherId": 166938,
+        "adSlot": 7079290
+      },
+      "triplelift": {
+        "inventoryCode": "BizBudding_RON_NativeFlex_pbc2s"
+      }
+    },
+    "totalprosports.com/rectangle-medium-adhesion": {
+      "rubicon": {
+        "accountId": 26298,
+        "siteId": 556630,
+        "zoneId": 3948853,
+        "bidonmultiformat": false
+      },
+      "kargo": {
+        "placementId": "_dZdSc3mrpg"
+      },
+      "sovrn": {
+        "tagid": 1294576
+      },
+      "aniview": {
+        "publisherId": "66aa757144c99c7ca504e937",
+        "channelId": "6806a79f20173d1cde0a4895"
+      },
+      "pubmatic": {
+        "publisherId": 166938,
+        "adSlot": 7079290
+      },
+      "triplelift": {
+        "inventoryCode": "BizBudding_Native_Adhesion_Prebidc2s"
+      }
+    },
+    "totalprosports.com/skyscraper-wide-adhesion": {
+      "rubicon": {
+        "accountId": 26298,
+        "siteId": 556630,
+        "zoneId": 3948855,
+        "bidonmultiformat": false
+      },
+      "kargo": {
+        "placementId": "_xPHrEbaqUL"
+      },
+      "sovrn": {
+        "tagid": 1294577
+      },
+      "aniview": {
+        "publisherId": "66aa757144c99c7ca504e937",
+        "channelId": "6806a79f20173d1cde0a4895"
+      },
+      "pubmatic": {
+        "publisherId": 166938,
+        "adSlot": 7079290
+      },
+      "triplelift": {
+        "inventoryCode": "BizBudding_RON_NativeFlex_pbc2s"
+      }
+    },
+    "totalprosports.com/leaderboard-wide-adhesion": {
+      "rubicon": {
+        "accountId": 26298,
+        "siteId": 556630,
+        "zoneId": 3948851,
+        "bidonmultiformat": false
+      },
+      "kargo": {
+        "placementId": "_alxQWkaGyi"
+      },
+      "sovrn": {
+        "tagid": 1294575
+      },
+      "aniview": {
+        "publisherId": "66aa757144c99c7ca504e937",
+        "channelId": "6806a79f20173d1cde0a4895"
+      },
+      "pubmatic": {
+        "publisherId": 166938,
+        "adSlot": 7079290
+      },
+      "triplelift": {
+        "inventoryCode": "BizBudding_RON_NativeFlex_pbc2s"
+      }
+    }
+  }
+}

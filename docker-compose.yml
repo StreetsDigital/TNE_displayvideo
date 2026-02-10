@@ -1,0 +1,62 @@
+version: '3.8'
+
+services:
+  catalyst:
+    image: catalyst-server:latest
+    container_name: catalyst-server
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - PBS_DISABLE_GDPR_ENFORCEMENT=true
+      - PBS_ENFORCE_GDPR=false
+      - PBS_ENFORCE_CCPA=false
+      - PBS_ENFORCE_COPPA=false
+      - PORT=8000
+      - HOST_URL=https://ads.thenexusengine.com
+      - LOG_LEVEL=debug
+      - PBS_TIMEOUT=2500ms
+      - TZ=America/New_York
+      - CORS_ALLOW_ALL=true
+      - IDR_ENABLED=false
+    volumes:
+      - ./logs:/app/logs
+      - ./config:/app/config:ro
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    networks:
+      - catalyst-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  nginx:
+    image: nginx:alpine
+    container_name: catalyst-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./assets:/usr/share/nginx/html/assets:ro
+    depends_on:
+      - catalyst
+    networks:
+      - catalyst-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  catalyst-network:
+    driver: bridge
+# Note: Add these to environment section

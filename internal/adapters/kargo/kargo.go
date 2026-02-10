@@ -1,5 +1,5 @@
-// Package rubicon implements the Rubicon/Magnite bidder adapter
-package rubicon
+// Package kargo implements the Kargo bidder adapter
+package kargo
 
 import (
 	"encoding/json"
@@ -12,15 +12,15 @@ import (
 )
 
 const (
-	defaultEndpoint = "https://prebid-server.rubiconproject.com/openrtb2/auction"
+	defaultEndpoint = "https://krk.kargo.com/api/v1/openrtb"
 )
 
-// Adapter implements the Rubicon bidder
+// Adapter implements the Kargo bidder
 type Adapter struct {
 	endpoint string
 }
 
-// New creates a new Rubicon adapter
+// New creates a new Kargo adapter
 func New(endpoint string) *Adapter {
 	if endpoint == "" {
 		endpoint = defaultEndpoint
@@ -28,57 +28,26 @@ func New(endpoint string) *Adapter {
 	return &Adapter{endpoint: endpoint}
 }
 
-// MakeRequests builds HTTP requests for Rubicon
+// MakeRequests builds HTTP requests for Kargo
 func (a *Adapter) MakeRequests(request *openrtb.BidRequest, extraInfo *adapters.ExtraRequestInfo) ([]*adapters.RequestData, []error) {
-	var errors []error
-	requests := make([]*adapters.RequestData, 0, len(request.Imp))
-
-	logger.Log.Debug().
-		Str("adapter", "rubicon").
-		Int("impressions", len(request.Imp)).
-		Str("request_id", request.ID).
-		Msg("Rubicon MakeRequests called")
-
-	// Rubicon requires one request per impression
-	for _, imp := range request.Imp {
-		reqCopy := *request
-		reqCopy.Imp = []openrtb.Imp{imp}
-
-		requestBody, err := json.Marshal(reqCopy)
-		if err != nil {
-			errors = append(errors, fmt.Errorf("failed to marshal request for imp %s: %w", imp.ID, err))
-			continue
-		}
-
-		headers := http.Header{}
-		headers.Set("Content-Type", "application/json;charset=utf-8")
-		headers.Set("Accept", "application/json")
-
-		requests = append(requests, &adapters.RequestData{
-			Method:  "POST",
-			URI:     a.endpoint,
-			Body:    requestBody,
-			Headers: headers,
-		})
-
-		logger.Log.Debug().
-			Str("adapter", "rubicon").
-			Str("imp_id", imp.ID).
-			Str("endpoint", a.endpoint).
-			Int("body_size", len(requestBody)).
-			Msg("Rubicon request created")
+	requestBody, err := json.Marshal(request)
+	if err != nil {
+		return nil, []error{fmt.Errorf("failed to marshal request: %w", err)}
 	}
 
-	logger.Log.Debug().
-		Str("adapter", "rubicon").
-		Int("requests_created", len(requests)).
-		Int("errors", len(errors)).
-		Msg("Rubicon MakeRequests completed")
+	headers := http.Header{}
+	headers.Set("Content-Type", "application/json;charset=utf-8")
+	headers.Set("Accept", "application/json")
 
-	return requests, errors
+	return []*adapters.RequestData{{
+		Method:  "POST",
+		URI:     a.endpoint,
+		Body:    requestBody,
+		Headers: headers,
+	}}, nil
 }
 
-// MakeBids parses Rubicon responses into bids
+// MakeBids parses Kargo responses into bids
 func (a *Adapter) MakeBids(request *openrtb.BidRequest, responseData *adapters.ResponseData) (*adapters.BidderResponse, []error) {
 	if responseData.StatusCode == http.StatusNoContent {
 		return nil, nil
@@ -99,11 +68,11 @@ func (a *Adapter) MakeBids(request *openrtb.BidRequest, responseData *adapters.R
 
 	response := &adapters.BidderResponse{
 		Currency:   bidResp.Cur,
-		ResponseID: bidResp.ID, // P1-1: Include ResponseID for validation
+		ResponseID: bidResp.ID,
 		Bids:       make([]*adapters.TypedBid, 0),
 	}
 
-	// P2-3: Build impression map once for O(1) lookups instead of O(n) per bid
+	// Build impression map for O(1) bid type detection
 	impMap := adapters.BuildImpMap(request.Imp)
 
 	for _, seatBid := range bidResp.SeatBid {
@@ -126,30 +95,25 @@ func Info() adapters.BidderInfo {
 	return adapters.BidderInfo{
 		Enabled: true,
 		Maintainer: &adapters.MaintainerInfo{
-			Email: "header-bidding@rubiconproject.com",
+			Email: "kraken@kargo.com",
 		},
 		Capabilities: &adapters.CapabilitiesInfo{
 			Site: &adapters.PlatformInfo{
 				MediaTypes: []adapters.BidType{
 					adapters.BidTypeBanner,
 					adapters.BidTypeVideo,
-				},
-			},
-			App: &adapters.PlatformInfo{
-				MediaTypes: []adapters.BidType{
-					adapters.BidTypeBanner,
-					adapters.BidTypeVideo,
+					adapters.BidTypeNative,
 				},
 			},
 		},
-		GVLVendorID: 52,
+		GVLVendorID: 972,
 		Endpoint:    defaultEndpoint,
 		DemandType:  adapters.DemandTypePlatform, // Platform demand (obfuscated as "thenexusengine")
 	}
 }
 
 func init() {
-	if err := adapters.RegisterAdapter("rubicon", New(""), Info()); err != nil {
-		logger.Log.Error().Err(err).Str("adapter", "rubicon").Msg("failed to register adapter")
+	if err := adapters.RegisterAdapter("kargo", New(""), Info()); err != nil {
+		logger.Log.Error().Err(err).Str("adapter", "kargo").Msg("failed to register adapter")
 	}
 }

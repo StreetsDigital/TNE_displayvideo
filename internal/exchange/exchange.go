@@ -1378,6 +1378,11 @@ func (e *Exchange) RunAuction(ctx context.Context, req *AuctionRequest) (*Auctio
 
 	response.DebugInfo.SelectedBidders = selectedBidders
 
+	logger.Log.Debug().
+		Strs("selected_bidders", selectedBidders).
+		Int("count", len(selectedBidders)).
+		Msg("Bidders selected for auction")
+
 	// Process FPD and filter EIDs (using snapshotted processor/filter for consistency)
 	var bidderFPD fpd.BidderFPD
 	if fpdProcessor != nil {
@@ -1708,6 +1713,10 @@ func (e *Exchange) callBiddersWithFPD(ctx context.Context, req *openrtb.BidReque
 	// If maxConcurrent <= 0, sem remains nil (unlimited concurrency)
 
 	for _, bidderCode := range bidders {
+		logger.Log.Debug().
+			Str("bidder", bidderCode).
+			Msg("Processing bidder in auction")
+
 		// Check circuit breaker before calling bidder
 		breaker := e.getBidderCircuitBreaker(bidderCode)
 		if breaker != nil && breaker.IsOpen() {
@@ -2211,6 +2220,12 @@ func (e *Exchange) callBidder(ctx context.Context, req *openrtb.BidRequest, bidd
 				Headers:    reqData.Headers,
 			}
 		} else {
+			logger.Log.Debug().
+				Str("bidder", bidderCode).
+				Str("uri", reqData.URI).
+				Str("method", reqData.Method).
+				Msg("Making HTTP request to bidder")
+
 			var err error
 			resp, err = e.httpClient.Do(ctx, reqData, timeout)
 			if err != nil {
