@@ -2247,8 +2247,24 @@ func (e *Exchange) callBidder(ctx context.Context, req *openrtb.BidRequest, bidd
 			}
 		}
 
+		// Log successful HTTP response for visibility
+		logger.Log.Debug().
+			Str("bidder", bidderCode).
+			Str("uri", reqData.URI).
+			Int("status_code", resp.StatusCode).
+			Int("body_size", len(resp.Body)).
+			Dur("elapsed", time.Since(start)).
+			Msg("bidder HTTP response received")
+
 		bidderResp, errs := adapter.MakeBids(req, resp)
 		if len(errs) > 0 {
+			// Log MakeBids errors for visibility
+			for _, err := range errs {
+				logger.Log.Debug().
+					Str("bidder", bidderCode).
+					Err(err).
+					Msg("bidder MakeBids error")
+			}
 			result.Errors = append(result.Errors, errs...)
 		}
 
