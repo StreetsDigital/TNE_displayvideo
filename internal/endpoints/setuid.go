@@ -103,11 +103,26 @@ func (h *SetUIDHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 // getCookieDomain extracts the domain for cookies
+// Returns a wildcard domain (e.g., ".thenexusengine.com") for cross-subdomain access
 func (h *SetUIDHandler) getCookieDomain(r *http.Request) string {
 	host := r.Host
 	if idx := strings.Index(host, ":"); idx != -1 {
 		host = host[:idx]
 	}
+
+	// For localhost/IP addresses, return as-is
+	if host == "localhost" || strings.Contains(host, "127.0.0.1") || strings.Contains(host, "::1") {
+		return host
+	}
+
+	// Extract base domain and return with leading dot for wildcard
+	// e.g., "ads.thenexusengine.com" -> ".thenexusengine.com"
+	parts := strings.Split(host, ".")
+	if len(parts) >= 2 {
+		// Return last two parts with leading dot
+		return "." + parts[len(parts)-2] + "." + parts[len(parts)-1]
+	}
+
 	return host
 }
 
@@ -153,11 +168,9 @@ func (h *OptOutHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Set opt-out
 	cookie.SetOptOut(true)
 
-	// Set the updated cookie
-	domain := r.Host
-	if idx := strings.Index(domain, ":"); idx != -1 {
-		domain = domain[:idx]
-	}
+	// Set the updated cookie (reuse the same domain logic)
+	handler := &SetUIDHandler{}
+	domain := handler.getCookieDomain(r)
 
 	if httpCookie, err := cookie.ToHTTPCookie(domain); err == nil {
 		http.SetCookie(w, httpCookie)
