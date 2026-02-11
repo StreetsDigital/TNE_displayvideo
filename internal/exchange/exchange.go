@@ -2248,11 +2248,16 @@ func (e *Exchange) callBidder(ctx context.Context, req *openrtb.BidRequest, bidd
 		}
 
 		// Log successful HTTP response for visibility
+		responsePreview := string(resp.Body)
+		if len(responsePreview) > 500 {
+			responsePreview = responsePreview[:500] + "..."
+		}
 		logger.Log.Debug().
 			Str("bidder", bidderCode).
 			Str("uri", reqData.URI).
 			Int("status_code", resp.StatusCode).
 			Int("body_size", len(resp.Body)).
+			Str("response_preview", responsePreview).
 			Dur("elapsed", time.Since(start)).
 			Msg("bidder HTTP response received")
 

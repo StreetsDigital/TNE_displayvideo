@@ -172,6 +172,14 @@
       }
     }
 
+    // Include user IDs from cookie
+    var userIds = catalyst._getUserIds();
+    if (Object.keys(userIds).length > 0) {
+      bidRequest.user = bidRequest.user || {};
+      bidRequest.user.userIds = userIds;
+      catalyst.log('Including user IDs for bidders:', Object.keys(userIds).join(', '));
+    }
+
     // Add privacy/consent info if available
     if (window.__tcfapi || window.__uspapi || window.__cmp) {
       catalyst._addPrivacyConsent(bidRequest);
@@ -278,6 +286,66 @@
   catalyst._notifyReady = function() {
     // No-op: Callback pattern is now used instead of global function calls
     // This function is kept for backwards compatibility but does nothing
+  };
+
+  /**
+   * Read and parse the uids cookie
+   * @returns {Object} Map of bidder -> user ID
+   * @private
+   */
+  catalyst._getUserIds = function() {
+    var uids = catalyst._getCookie('uids');
+    if (!uids) return {};
+
+    try {
+      // Cookie is base64-encoded JSON
+      var decoded = atob(uids);
+      var data = JSON.parse(decoded);
+
+      // Extract just the UID values (strip expires timestamps)
+      var userIds = {};
+      for (var bidder in data.uids || {}) {
+        if (data.uids[bidder].uid && !catalyst._isExpired(data.uids[bidder].expires)) {
+          userIds[bidder] = data.uids[bidder].uid;
+        }
+      }
+      return userIds;
+    } catch (e) {
+      catalyst.log('Failed to parse uids cookie:', e);
+      return {};
+    }
+  };
+
+  /**
+   * Get a cookie by name
+   * @param {string} name - Cookie name
+   * @returns {string|null} Cookie value or null
+   * @private
+   */
+  catalyst._getCookie = function(name) {
+    var cookies = document.cookie.split(';');
+    for (var i = 0; i < cookies.length; i++) {
+      var cookie = cookies[i].trim();
+      if (cookie.indexOf(name + '=') === 0) {
+        return cookie.substring(name.length + 1);
+      }
+    }
+    return null;
+  };
+
+  /**
+   * Check if a timestamp has expired
+   * @param {string} expiresStr - ISO date string
+   * @returns {boolean} True if expired
+   * @private
+   */
+  catalyst._isExpired = function(expiresStr) {
+    if (!expiresStr) return true;
+    try {
+      return new Date(expiresStr) < new Date();
+    } catch (e) {
+      return true;
+    }
   };
 
   /**

@@ -11,6 +11,7 @@ import (
 
 	"github.com/thenexusengine/tne_springwire/internal/exchange"
 	"github.com/thenexusengine/tne_springwire/internal/openrtb"
+	"github.com/thenexusengine/tne_springwire/internal/usersync"
 	"github.com/thenexusengine/tne_springwire/pkg/logger"
 )
 
@@ -138,9 +139,10 @@ type MAIPage struct {
 
 // MAIUser represents user/privacy info
 type MAIUser struct {
-	ConsentGiven bool   `json:"consentGiven,omitempty"`
-	GDPRApplies  bool   `json:"gdprApplies,omitempty"`
-	USPConsent   string `json:"uspConsent,omitempty"`
+	ConsentGiven bool              `json:"consentGiven,omitempty"`
+	GDPRApplies  bool              `json:"gdprApplies,omitempty"`
+	USPConsent   string            `json:"uspConsent,omitempty"`
+	UserIds      map[string]string `json:"userIds,omitempty"` // Bidder-specific user IDs from cookie sync
 }
 
 // MAIDevice represents device info
@@ -461,18 +463,99 @@ func (h *CatalystBidHandler) convertToOpenRTB(r *http.Request, maiBid *MAIBidReq
 		}
 	}
 
-	// Build user and regulations
+	// Build user object with IDs from request body AND cookies
 	var user *openrtb.User
 	var regs *openrtb.Regs
 
-	if maiBid.User != nil {
+	// Collect user IDs from all sources
+	userIDs := make(map[string]string)
+
+	// 1. From request body (SDK sends these)
+	if maiBid.User != nil && len(maiBid.User.UserIds) > 0 {
+		for bidder, uid := range maiBid.User.UserIds {
+			userIDs[bidder] = uid
+		}
+	}
+
+	// 2. From HTTP cookie as fallback (server-side cookie sync)
+	cookieSync := usersync.ParseCookie(r)
+	bidders := []string{"rubicon", "kargo", "sovrn", "pubmatic", "triplelift", "appnexus", "oms"}
+	for _, bidder := range bidders {
+		if uid := cookieSync.GetUID(bidder); uid != "" {
+			if _, exists := userIDs[bidder]; !exists {
+				userIDs[bidder] = uid
+			}
+		}
+	}
+
+	// Create user object if we have IDs or consent data
+	if len(userIDs) > 0 || maiBid.User != nil {
 		user = &openrtb.User{}
-		if maiBid.User.ConsentGiven {
-			user.Consent = "1"
-		} else {
-			user.Consent = "0"
+
+		// MODERN: Store all bidder IDs in user.ext.eids (OpenRTB 2.6+ standard)
+		// This provides transparency about ID sources and supports multiple ID types
+		if len(userIDs) > 0 {
+			eids := make([]map[string]interface{}, 0, len(userIDs))
+
+			// Map bidder codes to proper source domains
+			sourceDomains := map[string]string{
+				"rubicon":     "rubiconproject.com",
+				"kargo":       "kargo.com",
+				"sovrn":       "lijit.com",
+				"pubmatic":    "pubmatic.com",
+				"triplelift":  "3lift.com",
+				"appnexus":    "adnxs.com",
+				"oms":         "onemobile.com",
+			}
+
+			for bidder, uid := range userIDs {
+				source := sourceDomains[bidder]
+				if source == "" {
+					source = bidder + ".com" // Fallback
+				}
+
+				eids = append(eids, map[string]interface{}{
+					"source": source,
+					"uids": []map[string]interface{}{
+						{
+							"id":    uid,
+							"atype": 1, // Browser cookie-based ID
+						},
+					},
+				})
+			}
+
+			// Build user.ext with eids and consent
+			userExt := map[string]interface{}{
+				"eids": eids,
+			}
+
+			// Add consent hash if available (GDPR transparency)
+			if maiBid.User != nil && maiBid.User.ConsentGiven {
+				userExt["consent"] = "1"
+			}
+
+			extJSON, _ := json.Marshal(userExt)
+			user.Ext = extJSON
+
+			logger.Log.Info().
+				Int("user_ids", len(userIDs)).
+				Strs("bidders", getBidderKeys(userIDs)).
+				Msg("Populated user IDs from cookie sync")
 		}
 
+		// LEGACY: Set consent string at top level (OpenRTB 2.5 compatibility)
+		if maiBid.User != nil {
+			if maiBid.User.ConsentGiven {
+				user.Consent = "1"
+			} else {
+				user.Consent = "0"
+			}
+		}
+	}
+
+	// Handle regulations (GDPR/CCPA)
+	if maiBid.User != nil {
 		regs = &openrtb.Regs{}
 		if maiBid.User.GDPRApplies {
 			gdpr := 1
@@ -566,4 +649,13 @@ func (h *CatalystBidHandler) writeErrorResponse(w http.ResponseWriter, message s
 	json.NewEncoder(w).Encode(map[string]string{
 		"error": message,
 	})
+}
+
+// getBidderKeys extracts keys from user IDs map for logging
+func getBidderKeys(userIDs map[string]string) []string {
+	keys := make([]string, 0, len(userIDs))
+	for k := range userIDs {
+		keys = append(keys, k)
+	}
+	return keys
 }

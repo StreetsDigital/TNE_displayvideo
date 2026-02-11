@@ -61,11 +61,18 @@ func (a *Adapter) MakeRequests(request *openrtb.BidRequest, extraInfo *adapters.
 			Headers: headers,
 		})
 
+		// Log the request body for verification
+		requestPreview := string(requestBody)
+		if len(requestPreview) > 1000 {
+			requestPreview = requestPreview[:1000] + "..."
+		}
+
 		logger.Log.Debug().
 			Str("adapter", "rubicon").
 			Str("imp_id", imp.ID).
 			Str("endpoint", a.endpoint).
 			Int("body_size", len(requestBody)).
+			Str("request_body", requestPreview).
 			Msg("Rubicon request created")
 	}
 
