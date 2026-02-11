@@ -115,11 +115,25 @@ func (h *SetUIDHandler) getCookieDomain(r *http.Request) string {
 		return host
 	}
 
-	// Extract base domain and return with leading dot for wildcard
-	// e.g., "ads.thenexusengine.com" -> ".thenexusengine.com"
+	// Extract root domain for cookie
+	// For "ads.thenexusengine.com" -> ".thenexusengine.com"
+	// For "www.example.co.uk" -> ".example.co.uk"
 	parts := strings.Split(host, ".")
+
+	// Handle special multi-level TLDs (co.uk, com.au, etc.)
+	if len(parts) >= 3 {
+		// Check if second-to-last part is a known second-level domain
+		secondLevel := parts[len(parts)-2]
+		if secondLevel == "co" || secondLevel == "com" || secondLevel == "gov" || secondLevel == "org" {
+			// Return last 3 parts: .example.co.uk
+			if len(parts) >= 3 {
+				return "." + parts[len(parts)-3] + "." + parts[len(parts)-2] + "." + parts[len(parts)-1]
+			}
+		}
+	}
+
+	// Default: return last 2 parts with leading dot
 	if len(parts) >= 2 {
-		// Return last two parts with leading dot
 		return "." + parts[len(parts)-2] + "." + parts[len(parts)-1]
 	}
 
