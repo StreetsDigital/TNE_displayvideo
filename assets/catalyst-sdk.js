@@ -746,6 +746,22 @@
           targetSlot.setTargeting('hb_size_catalyst', bid.width + 'x' + bid.height);
         }
 
+        // Set bid source (server-to-server)
+        targetSlot.setTargeting('hb_source_catalyst', 's2s');
+
+        // Set format (banner ads)
+        targetSlot.setTargeting('hb_format_catalyst', 'banner');
+
+        // Set deal ID if present (for PMP deals)
+        if (bid.dealId) {
+          targetSlot.setTargeting('hb_deal_catalyst', bid.dealId);
+        }
+
+        // Set advertiser domain if available
+        if (bid.meta && bid.meta.advertiserDomains && bid.meta.advertiserDomains.length > 0) {
+          targetSlot.setTargeting('hb_adomain_catalyst', bid.meta.advertiserDomains[0]);
+        }
+
         // Set actual demand partner that won (if available in meta)
         if (bid.meta && bid.meta.networkName) {
           targetSlot.setTargeting('hb_partner', bid.meta.networkName);
@@ -758,6 +774,20 @@
         // Set page-level targeting if no slot found (Catalyst-specific keys only)
         if (bid.cpm) {
           pubads.setTargeting('hb_pb_catalyst', bid.cpm.toFixed(2));
+        }
+
+        // Set bid source and format
+        pubads.setTargeting('hb_source_catalyst', 's2s');
+        pubads.setTargeting('hb_format_catalyst', 'banner');
+
+        // Set deal ID if present
+        if (bid.dealId) {
+          pubads.setTargeting('hb_deal_catalyst', bid.dealId);
+        }
+
+        // Set advertiser domain if available
+        if (bid.meta && bid.meta.advertiserDomains && bid.meta.advertiserDomains.length > 0) {
+          pubads.setTargeting('hb_adomain_catalyst', bid.meta.advertiserDomains[0]);
         }
 
         // Set actual demand partner
