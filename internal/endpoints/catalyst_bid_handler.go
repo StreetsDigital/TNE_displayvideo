@@ -246,6 +246,15 @@ func (h *CatalystBidHandler) HandleBidRequest(w http.ResponseWriter, r *http.Req
 	maiResp := h.convertToMAIResponse(auctionResp, impToSlot)
 	maiResp.ResponseTime = int(time.Since(startTime).Milliseconds())
 
+	// Log the full response payload for debugging
+	if respJSON, err := json.Marshal(maiResp); err == nil {
+		log.Debug().
+			Str("full_response", string(respJSON)).
+			Int("bids", len(maiResp.Bids)).
+			Int("response_time_ms", maiResp.ResponseTime).
+			Msg("Catalyst full response payload")
+	}
+
 	// Write response
 	h.writeMAIResponse(w, maiResp)
 

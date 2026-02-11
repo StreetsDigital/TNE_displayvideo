@@ -92,10 +92,25 @@ func (a *Adapter) MakeBids(request *openrtb.BidRequest, responseData *adapters.R
 		return nil, []error{fmt.Errorf("unexpected status: %d", responseData.StatusCode)}
 	}
 
+	// Log the raw response for debugging
+	logger.Log.Debug().
+		Str("adapter", "rubicon").
+		Int("status_code", responseData.StatusCode).
+		Int("body_size", len(responseData.Body)).
+		Str("raw_response", string(responseData.Body)).
+		Msg("Rubicon raw HTTP response")
+
 	var bidResp openrtb.BidResponse
 	if err := json.Unmarshal(responseData.Body, &bidResp); err != nil {
 		return nil, []error{fmt.Errorf("failed to parse response: %w", err)}
 	}
+
+	logger.Log.Debug().
+		Str("adapter", "rubicon").
+		Str("response_id", bidResp.ID).
+		Str("currency", bidResp.Cur).
+		Int("seatbids", len(bidResp.SeatBid)).
+		Msg("Rubicon parsed response")
 
 	response := &adapters.BidderResponse{
 		Currency:   bidResp.Cur,
@@ -111,12 +126,30 @@ func (a *Adapter) MakeBids(request *openrtb.BidRequest, responseData *adapters.R
 			bid := &seatBid.Bid[i]
 			bidType := adapters.GetBidTypeFromMap(bid, impMap)
 
+			logger.Log.Debug().
+				Str("adapter", "rubicon").
+				Str("bid_id", bid.ID).
+				Str("imp_id", bid.ImpID).
+				Float64("price", bid.Price).
+				Str("currency", bidResp.Cur).
+				Str("creative_id", bid.CRID).
+				Str("deal_id", bid.DealID).
+				Int("width", bid.W).
+				Int("height", bid.H).
+				Str("bid_type", string(bidType)).
+				Msg("Rubicon bid details")
+
 			response.Bids = append(response.Bids, &adapters.TypedBid{
 				Bid:     bid,
 				BidType: bidType,
 			})
 		}
 	}
+
+	logger.Log.Debug().
+		Str("adapter", "rubicon").
+		Int("total_bids", len(response.Bids)).
+		Msg("Rubicon MakeBids completed")
 
 	return response, nil
 }

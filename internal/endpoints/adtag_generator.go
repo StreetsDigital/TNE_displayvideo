@@ -406,3 +406,13 @@ func HandleAssets(w http.ResponseWriter, r *http.Request) {
 
 	http.NotFound(w, r)
 }
+
+// HandleCatalystSDK serves the Catalyst MAI Publisher SDK
+func HandleCatalystSDK(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
+	w.Header().Set("Cache-Control", "public, max-age=3600")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	// Serve catalyst-sdk.js from file
+	http.ServeFile(w, r, "assets/catalyst-sdk.js")
+}

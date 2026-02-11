@@ -295,7 +295,7 @@ func (e *Exchange) Close() error {
 // initBidderCircuitBreaker initializes a circuit breaker for a specific bidder
 func (e *Exchange) initBidderCircuitBreaker(bidderCode string) {
 	config := &idr.CircuitBreakerConfig{
-		FailureThreshold: 5,              // Open after 5 consecutive failures
+		FailureThreshold: 5,               // Open after 5 consecutive failures
 		SuccessThreshold: 2,              // Close after 2 successes in half-open
 		Timeout:          30 * time.Second, // Wait 30s before testing recovery
 		MaxConcurrent:    100,            // Max concurrent requests per bidder

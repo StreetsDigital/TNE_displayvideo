@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Catalyst Test - No GDPR Checks</title>
+    <style>
+        body { font-family: monospace; padding: 20px; background: #f5f5f5; }
+        .container { max-width: 1200px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; }
+        h1 { color: #333; }
+        .ad-slot { border: 2px solid #ccc; margin: 20px 0; padding: 10px; background: #fafafa; }
+        .log { background: #000; color: #0f0; padding: 15px; font-size: 12px; max-height: 500px; overflow-y: auto; margin-top: 20px; }
+        .log-entry { margin: 5px 0; }
+        .error { color: #f00; }
+        .success { color: #0f0; }
+        .info { color: #0af; }
+        button { padding: 10px 20px; font-size: 16px; cursor: pointer; margin: 10px 0; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Catalyst Direct Test (No GDPR Checks)</h1>
+        <p>This page calls Catalyst directly without GDPR consent checks for testing purposes.</p>
+
+        <button onclick="runTest()">Run Bid Test</button>
+        <button onclick="clearLog()">Clear Log</button>
+
+        <div id="ad-leaderboard" class="ad-slot">
+            <strong>Leaderboard Slot (728x90)</strong>
+            <div id="leaderboard-ad"></div>
+        </div>
+
+        <div id="ad-rectangle" class="ad-slot">
+            <strong>Rectangle Slot (300x250)</strong>
+            <div id="rectangle-ad"></div>
+        </div>
+
+        <div class="log" id="log"></div>
+    </div>
+
+    <script>
+        const logDiv = document.getElementById('log');
+
+        function log(message, type = 'info') {
+            const timestamp = new Date().toLocaleTimeString();
+            const entry = document.createElement('div');
+            entry.className = `log-entry ${type}`;
+            entry.textContent = `[${timestamp}] ${message}`;
+            logDiv.appendChild(entry);
+            logDiv.scrollTop = logDiv.scrollHeight;
+            console.log(`[Catalyst Test] ${message}`);
+        }
+
+        function clearLog() {
+            logDiv.innerHTML = '';
+        }
+
+        function runTest() {
+            log('Starting Catalyst bid test...', 'info');
+
+            // Direct API call to Catalyst - bypassing all GDPR checks
+            const bidRequest = {
+                accountId: "icisic-media",
+                slots: [
+                    {
+                        divId: "leaderboard-ad",
+                        sizes: [[728, 90], [970, 250]],
+                        adUnitPath: "totalprosports.com/leaderboard-wide",
+                        position: "atf"
+                    },
+                    {
+                        divId: "rectangle-ad",
+                        sizes: [[300, 250]],
+                        adUnitPath: "totalprosports.com/rectangle-medium",
+                        position: "btf"
+                    }
+                ],
+                page: {
+                    url: window.location.href,
+                    domain: window.location.hostname,
+                    keywords: ["test"],
+                    categories: ["IAB1"]
+                },
+                timeout: 2000
+            };
+
+            log(`Sending bid request with ${bidRequest.slots.length} slots`, 'info');
+            log(`Ad units: ${bidRequest.slots.map(s => s.adUnitPath).join(', ')}`, 'info');
+
+            const startTime = Date.now();
+
+            fetch('https://ads.thenexusengine.com/v1/bid', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(bidRequest)
+            })
+            .then(response => {
+                const elapsed = Date.now() - startTime;
+                log(`Response received in ${elapsed}ms (Status: ${response.status})`, response.ok ? 'success' : 'error');
+                return response.json();
+            })
+            .then(data => {
+                log('=== BID RESPONSE ===', 'success');
+                log(`Bids returned: ${data.bids ? data.bids.length : 0}`, 'success');
+                log(`Response time: ${data.responseTime}ms`, 'info');
+
+                if (data.bids && data.bids.length > 0) {
+                    data.bids.forEach((bid, i) => {
+                        log(`--- Bid ${i + 1} ---`, 'success');
+                        log(`  Slot: ${bid.divId}`, 'info');
+                        log(`  CPM: $${bid.cpm}`, 'success');
+                        log(`  Size: ${bid.width}x${bid.height}`, 'info');
+                        log(`  Currency: ${bid.currency}`, 'info');
+                        log(`  Ad ID: ${bid.adId}`, 'info');
+                        log(`  Creative ID: ${bid.creativeId}`, 'info');
+                        if (bid.dealId) log(`  Deal ID: ${bid.dealId}`, 'info');
+                        if (bid.bidder) log(`  Bidder: ${bid.bidder}`, 'info');
+                    });
+
+                    // Show full response
+                    log('=== FULL RESPONSE JSON ===', 'info');
+                    log(JSON.stringify(data, null, 2), 'info');
+                } else {
+                    log('No bids returned', 'error');
+                    log(`Full response: ${JSON.stringify(data)}`, 'info');
+                }
+            })
+            .catch(error => {
+                log(`ERROR: ${error.message}`, 'error');
+                console.error('Catalyst test error:', error);
+            });
+        }
+
+        // Auto-run on load
+        log('Test page loaded - ready to test', 'success');
+        log('Click "Run Bid Test" to make a direct Catalyst bid request (no GDPR checks)', 'info');
+    </script>
+</body>
+</html>

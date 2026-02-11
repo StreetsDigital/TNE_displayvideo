@@ -174,7 +174,7 @@ func (a *Adapter) Info() adapters.BidderInfo {
 // Info returns bidder information (package function for registration)
 func Info() adapters.BidderInfo {
 	return adapters.BidderInfo{
-		Enabled:                 true,
+		Enabled:                 false, // Disabled in production - demo bids compete with real bidders
 		ModifyingVastXmlAllowed: false,
 		GVLVendorID:             0, // No GDPR vendor ID for demo adapter
 		Capabilities: &adapters.CapabilitiesInfo{

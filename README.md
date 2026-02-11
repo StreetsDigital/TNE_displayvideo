@@ -459,6 +459,118 @@ async function addPublisher(id, domains) {
 
 See **[PUBLISHER-CONFIG-GUIDE.md](PUBLISHER-CONFIG-GUIDE.md)** for complete documentation.
 
+---
+
+### Catalyst SDK - MAI Publisher Integration
+
+Server-side header bidding SDK for integration with MAI Publisher's client-side ad stack.
+
+**Features:**
+- JavaScript SDK (< 50KB gzipped)
+- 2500ms server-side auction timeout
+- Coordination with Prebid.js and Amazon UAM
+- GDPR/CCPA/COPPA compliance
+- Real-time bidding via JSON API
+
+**Quick Integration:**
+
+```html
+<!-- 1. Load SDK -->
+<script src="https://cdn.thenexusengine.com/assets/catalyst-sdk.js" async></script>
+
+<!-- 2. Initialize -->
+<script>
+catalyst.cmd = catalyst.cmd || [];
+catalyst.cmd.push(function() {
+  catalyst.init({
+    accountId: 'your-account-id',
+    timeout: 2800,
+    debug: false
+  });
+});
+</script>
+
+<!-- 3. Request Bids -->
+<script>
+catalyst.requestBids({
+  slots: [
+    {
+      divId: 'ad-slot-1',
+      sizes: [[728, 90], [970, 250]],
+      adUnitPath: '/123456/homepage/leaderboard'
+    }
+  ]
+}, function(bids) {
+  console.log('Received ' + bids.length + ' bids:', bids);
+  // MAI Publisher will handle bid coordination
+});
+</script>
+```
+
+**API Endpoint:**
+
+```bash
+# POST /v1/bid
+curl -X POST https://ads.thenexusengine.com/v1/bid \
+  -H "Content-Type: application/json" \
+  -d '{
+    "accountId": "your-account-id",
+    "timeout": 2800,
+    "slots": [{
+      "divId": "ad-slot-1",
+      "sizes": [[728, 90]],
+      "adUnitPath": "/123456/homepage/leaderboard"
+    }],
+    "page": {
+      "url": "https://example.com/article",
+      "domain": "example.com"
+    }
+  }'
+
+# Response
+{
+  "bids": [
+    {
+      "divId": "ad-slot-1",
+      "cpm": 2.50,
+      "currency": "USD",
+      "width": 728,
+      "height": 90,
+      "adId": "bid-123",
+      "creativeId": "creative-456"
+    }
+  ],
+  "responseTime": 1247
+}
+```
+
+**Testing:**
+
+```bash
+# Unit tests
+go test ./tests/catalyst_bid_test.go
+
+# Integration tests
+go test ./tests/catalyst_integration_test.go
+
+# Browser test page
+open tests/catalyst_sdk_test.html
+```
+
+**Performance SLA:**
+- SDK load time: < 500ms (P95)
+- API response time: < 2500ms (P95)
+- Uptime: 99.9%
+- Error rate: < 1%
+- Timeout rate: < 5%
+
+**Documentation:**
+- [Integration Specification](docs/integrations/BB_NEXUS-ENGINE-INTEGRATION-SPEC.md)
+- [Deployment Guide](docs/integrations/CATALYST_DEPLOYMENT_GUIDE.md)
+- Test Account: `mai-staging-test` (staging)
+
+---
+
 ### Bidder-Specific Parameters
 
 Each bidder adapter requires specific parameters in the OpenRTB request.

@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Catalyst Magnite Test</title>
+    <script src="https://ads.thenexusengine.com/assets/catalyst-sdk.js" async></script>
+</head>
+<body>
+    <h1>Catalyst Magnite Integration Test</h1>
+
+    <div id="ad-leaderboard" style="width:728px;height:90px;border:1px solid #ccc;margin:20px;">
+        Leaderboard (728x90)
+    </div>
+
+    <div id="ad-rectangle" style="width:300px;height:250px;border:1px solid #ccc;margin:20px;">
+        Rectangle (300x250)
+    </div>
+
+    <div id="results" style="margin:20px;padding:20px;background:#f0f0f0;font-family:monospace;"></div>
+
+    <script>
+        var log = document.getElementById('results');
+
+        function logMessage(msg) {
+            log.innerHTML += msg + '<br>';
+            console.log('[Catalyst Test]', msg);
+        }
+
+        // Mock biddersReady callback
+        window.biddersReady = function(bidder) {
+            logMessage('✓ biddersReady("' + bidder + '") called');
+        };
+
+        // Initialize Catalyst
+        window.catalyst = window.catalyst || {};
+        catalyst.cmd = catalyst.cmd || [];
+
+        catalyst.cmd.push(function() {
+            logMessage('Initializing Catalyst SDK...');
+
+            catalyst.init({
+                accountId: 'icisic-media',
+                timeout: 2800,
+                debug: true
+            });
+
+            logMessage('✓ Catalyst initialized');
+
+            // Request bids
+            logMessage('Requesting bids from Magnite...');
+            var startTime = Date.now();
+
+            catalyst.requestBids({
+                slots: [
+                    {
+                        divId: 'ad-leaderboard',
+                        sizes: [[728, 90], [970, 250]],
+                        adUnitPath: 'totalprosports.com/leaderboard-wide',
+                        position: 'atf'
+                    },
+                    {
+                        divId: 'ad-rectangle',
+                        sizes: [[300, 250]],
+                        adUnitPath: 'totalprosports.com/rectangle-medium',
+                        position: 'btf'
+                    }
+                ],
+                page: {
+                    url: window.location.href,
+                    domain: window.location.hostname,
+                    keywords: ['test', 'magnite'],
+                    categories: ['IAB1']
+                }
+            }, function(bids) {
+                var elapsed = Date.now() - startTime;
+                logMessage('✓ Received response in ' + elapsed + 'ms');
+                logMessage('Bids returned: ' + bids.length);
+
+                bids.forEach(function(bid, i) {
+                    logMessage('Bid ' + (i+1) + ':');
+                    logMessage('  divId: ' + bid.divId);
+                    logMessage('  CPM: $' + bid.cpm);
+                    logMessage('  Size: ' + bid.width + 'x' + bid.height);
+                    logMessage('  AdId: ' + bid.adId);
+                    logMessage('  CreativeId: ' + bid.creativeId);
+                    if (bid.dealId) {
+                        logMessage('  DealId: ' + bid.dealId);
+                    }
+                });
+
+                if (bids.length === 0) {
+                    logMessage('⚠ No bids received - check server logs');
+                }
+            });
+        });
+    </script>
+</body>
+</html>
