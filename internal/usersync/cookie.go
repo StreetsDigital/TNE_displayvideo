@@ -194,7 +194,7 @@ func (c *Cookie) ToHTTPCookie(domain string) (*http.Cookie, error) {
 		Domain:   domain,
 		Expires:  time.Now().Add(DefaultTTL),
 		MaxAge:   int(DefaultTTL.Seconds()),
-		HttpOnly: true,
+		HttpOnly: false, // Allow JavaScript access for client-side SDK
 		Secure:   true,
 		SameSite: http.SameSiteNoneMode,
 	}, nil
