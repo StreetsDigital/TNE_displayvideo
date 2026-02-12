@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"strings"
@@ -203,7 +204,21 @@ func (h *CatalystBidHandler) HandleBidRequest(w http.ResponseWriter, r *http.Req
 
 	// Parse MAI bid request
 	var maiBidReq MAIBidRequest
-	if err := json.NewDecoder(r.Body).Decode(&maiBidReq); err != nil {
+	bodyBytes, err := io.ReadAll(r.Body)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to read MAI bid request body")
+		h.writeErrorResponse(w, "Invalid request format", http.StatusBadRequest)
+		return
+	}
+
+	// Log incoming request body for debugging
+	requestPreview := string(bodyBytes)
+	if len(requestPreview) > 2000 {
+		requestPreview = requestPreview[:2000] + "..."
+	}
+	log.Debug().Str("request_body", requestPreview).Msg("Received MAI bid request")
+
+	if err := json.Unmarshal(bodyBytes, &maiBidReq); err != nil {
 		log.Error().Err(err).Msg("Failed to parse MAI bid request")
 		h.writeErrorResponse(w, "Invalid request format", http.StatusBadRequest)
 		return

@@ -2521,10 +2521,17 @@ func (e *Exchange) callBidder(ctx context.Context, req *openrtb.BidRequest, bidd
 				Headers:    reqData.Headers,
 			}
 		} else {
+			// Log request body for debugging
+			requestPreview := string(reqData.Body)
+			if len(requestPreview) > 2000 {
+				requestPreview = requestPreview[:2000] + "..."
+			}
+
 			logger.Log.Debug().
 				Str("bidder", bidderCode).
 				Str("uri", reqData.URI).
 				Str("method", reqData.Method).
+				Str("request_body", requestPreview).
 				Msg("Making HTTP request to bidder")
 
 			var err error
