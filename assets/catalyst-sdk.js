@@ -289,31 +289,76 @@
   };
 
   /**
-   * Read and parse the uids cookie
+   * Read and parse the uids cookie AND get user IDs from Prebid.js
    * @returns {Object} Map of bidder -> user ID
    * @private
    */
   catalyst._getUserIds = function() {
+    var userIds = {};
+
+    // 1. Read from Catalyst's own uids cookie
     var uids = catalyst._getCookie('uids');
-    if (!uids) return {};
+    if (uids) {
+      try {
+        // Cookie is base64-encoded JSON
+        var decoded = atob(uids);
+        var data = JSON.parse(decoded);
 
-    try {
-      // Cookie is base64-encoded JSON
-      var decoded = atob(uids);
-      var data = JSON.parse(decoded);
-
-      // Extract just the UID values (strip expires timestamps)
-      var userIds = {};
-      for (var bidder in data.uids || {}) {
-        if (data.uids[bidder].uid && !catalyst._isExpired(data.uids[bidder].expires)) {
-          userIds[bidder] = data.uids[bidder].uid;
+        // Extract just the UID values (strip expires timestamps)
+        for (var bidder in data.uids || {}) {
+          if (data.uids[bidder].uid && !catalyst._isExpired(data.uids[bidder].expires)) {
+            userIds[bidder] = data.uids[bidder].uid;
+          }
         }
+      } catch (e) {
+        catalyst.log('Failed to parse uids cookie:', e);
       }
-      return userIds;
-    } catch (e) {
-      catalyst.log('Failed to parse uids cookie:', e);
-      return {};
     }
+
+    // 2. Get user IDs from Prebid.js if available
+    if (window.pbjs && typeof window.pbjs.getUserIds === 'function') {
+      try {
+        var prebidUserIds = window.pbjs.getUserIds();
+        if (prebidUserIds && typeof prebidUserIds === 'object') {
+          // Prebid returns IDs like: { id5id: {...}, pubcid: "...", ... }
+          // Map known ID sources to bidder codes
+          var idSourceToBidder = {
+            'id5id': 'id5',
+            'pubcid': 'pubcommon',
+            'pubProvidedId': 'pubprovided',
+            'uid2': 'uid2',
+            'parrableId': 'parrable',
+            'identityLink': 'liveramp',
+            'criteoId': 'criteo',
+            'netId': 'netid'
+          };
+
+          for (var source in prebidUserIds) {
+            var bidderCode = idSourceToBidder[source] || source;
+            var idValue = prebidUserIds[source];
+
+            // Handle different ID formats
+            if (idValue && typeof idValue === 'object') {
+              if (idValue.uid) {
+                userIds[bidderCode] = idValue.uid;
+              } else if (idValue.id) {
+                userIds[bidderCode] = idValue.id;
+              }
+            } else if (idValue && typeof idValue === 'string') {
+              userIds[bidderCode] = idValue;
+            }
+          }
+
+          if (Object.keys(prebidUserIds).length > 0) {
+            catalyst.log('Added', Object.keys(prebidUserIds).length, 'user IDs from Prebid.js');
+          }
+        }
+      } catch (e) {
+        catalyst.log('Failed to get Prebid user IDs:', e);
+      }
+    }
+
+    return userIds;
   };
 
   /**
