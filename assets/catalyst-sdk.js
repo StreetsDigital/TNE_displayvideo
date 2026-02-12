@@ -408,6 +408,11 @@
           if (success && tcData) {
             bidRequest.user.gdprApplies = tcData.gdprApplies || false;
             bidRequest.user.consentGiven = tcData.eventStatus === 'tcloaded' || tcData.eventStatus === 'useractioncomplete';
+
+            // CRITICAL: Pass the actual TCF consent string for bidders
+            if (tcData.tcString) {
+              bidRequest.user.consentString = tcData.tcString;
+            }
           }
         });
       } catch (e) {
