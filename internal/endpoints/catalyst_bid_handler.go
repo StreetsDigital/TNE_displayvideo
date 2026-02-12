@@ -329,83 +329,100 @@ func (h *CatalystBidHandler) convertToOpenRTB(r *http.Request, maiBid *MAIBidReq
 			TagID: slot.AdUnitPath,
 		}
 
-		// Look up bidder parameters using hierarchical config (DB first, then mapping file fallback)
-		if slot.AdUnitPath != "" && maiBid.AccountID != "" {
-			// Extract domain from page context
-			domain := ""
-			if maiBid.Page != nil && maiBid.Page.Domain != "" {
-				domain = maiBid.Page.Domain
-			}
+	// Look up bidder parameters using hierarchical config (DB first, then mapping file fallback)
+	// Always try to lookup bidder config, with appropriate fallbacks
+	impExt := make(map[string]interface{})
 
-			// Build imp.ext with all configured bidders
-			impExt := make(map[string]interface{})
+	if maiBid.AccountID == "" {
+		logger.Log.Warn().Msg("Missing accountId - cannot lookup bidder config")
+	} else {
+		// Extract domain from page context
+		domain := ""
+		if maiBid.Page != nil && maiBid.Page.Domain != "" {
+			domain = maiBid.Page.Domain
+		}
 
-			// List of bidders to look up
-			bidders := []string{"rubicon", "kargo", "sovrn", "pubmatic", "triplelift"}
+		// Warn if adUnitPath is missing
+		if slot.AdUnitPath == "" {
+			logger.Log.Warn().
+				Str("publisher", maiBid.AccountID).
+				Str("domain", domain).
+				Str("div_id", slot.DivID).
+				Msg("Missing adUnitPath - falling back to publisher-level config only")
+		}
 
-			// For each bidder, use hierarchical config lookup
-			for _, bidderCode := range bidders {
-				var params map[string]interface{}
-				var err error
+		// List of bidders to look up
+		bidders := []string{"rubicon", "kargo", "sovrn", "pubmatic", "triplelift"}
 
-				// Try database hierarchical lookup first
-				if h.publisherStore != nil {
-					params, err = h.publisherStore.GetBidderConfigHierarchical(
-						r.Context(),
-						maiBid.AccountID,
-						domain,
-						slot.AdUnitPath,
-						bidderCode,
-					)
-					if err != nil {
-						logger.Log.Warn().
-							Err(err).
-							Str("publisher", maiBid.AccountID).
-							Str("domain", domain).
-							Str("ad_unit", slot.AdUnitPath).
-							Str("bidder", bidderCode).
-							Msg("Error looking up hierarchical config")
-					}
-				}
+		// For each bidder, use hierarchical config lookup
+		for _, bidderCode := range bidders {
+			var params map[string]interface{}
+			var err error
 
-				// If no DB config found, fall back to mapping file
-				if params == nil && h.mapping != nil {
-					if adUnitConfig, ok := h.mapping.AdUnits[slot.AdUnitPath]; ok {
-						params = h.extractBidderParamsFromMapping(bidderCode, &adUnitConfig)
-					}
-				}
-
-				// Add params to impExt if found
-				if params != nil && len(params) > 0 {
-					impExt[bidderCode] = params
-				}
-			}
-
-			// Marshal and attach to impression
-			if len(impExt) > 0 {
-				extJSON, err := json.Marshal(impExt)
-				if err == nil {
-					imp.Ext = extJSON
-					logger.Log.Info().
+			// Try database hierarchical lookup first
+			// Hierarchical lookup will fall back to publisher-level if adUnitPath is empty
+			if h.publisherStore != nil {
+				params, err = h.publisherStore.GetBidderConfigHierarchical(
+					r.Context(),
+					maiBid.AccountID,
+					domain,
+					slot.AdUnitPath, // May be empty - hierarchical lookup handles this
+					bidderCode,
+				)
+				if err != nil {
+					logger.Log.Warn().
+						Err(err).
 						Str("publisher", maiBid.AccountID).
 						Str("domain", domain).
 						Str("ad_unit", slot.AdUnitPath).
-						Int("bidders", len(impExt)).
-						Msg("Injected bidder parameters using hierarchical config")
-				} else {
-					logger.Log.Error().
-						Err(err).
-						Str("ad_unit", slot.AdUnitPath).
-						Msg("Failed to marshal bidder parameters")
+						Str("bidder", bidderCode).
+						Msg("Error looking up hierarchical config")
 				}
+			}
+
+			// If no DB config found, fall back to mapping file (only if we have adUnitPath)
+			if params == nil && h.mapping != nil && slot.AdUnitPath != "" {
+				if adUnitConfig, ok := h.mapping.AdUnits[slot.AdUnitPath]; ok {
+					params = h.extractBidderParamsFromMapping(bidderCode, &adUnitConfig)
+				}
+			}
+
+			// Add params to impExt if found
+			if params != nil && len(params) > 0 {
+				impExt[bidderCode] = params
 			} else {
-				logger.Log.Warn().
+				logger.Log.Debug().
+					Str("bidder", bidderCode).
+					Str("ad_unit", slot.AdUnitPath).
+					Msg("No configuration found for bidder")
+			}
+		}
+
+		// Marshal and attach to impression
+		if len(impExt) > 0 {
+			extJSON, err := json.Marshal(impExt)
+			if err == nil {
+				imp.Ext = extJSON
+				logger.Log.Info().
 					Str("publisher", maiBid.AccountID).
 					Str("domain", domain).
 					Str("ad_unit", slot.AdUnitPath).
-					Msg("No bidder configuration found (DB or mapping file)")
+					Int("bidders", len(impExt)).
+					Msg("Injected bidder parameters using hierarchical config")
+			} else {
+				logger.Log.Error().
+					Err(err).
+					Str("ad_unit", slot.AdUnitPath).
+					Msg("Failed to marshal bidder parameters")
 			}
+		} else {
+			logger.Log.Warn().
+				Str("publisher", maiBid.AccountID).
+				Str("domain", domain).
+				Str("ad_unit", slot.AdUnitPath).
+				Msg("No bidder configuration found (DB or mapping file)")
 		}
+	}
 
 		imps = append(imps, imp)
 	}
