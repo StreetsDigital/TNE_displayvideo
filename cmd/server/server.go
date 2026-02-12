@@ -12,7 +12,6 @@ import (
 	_ "github.com/thenexusengine/tne_springwire/internal/adapters/appnexus"
 	// _ "github.com/thenexusengine/tne_springwire/internal/adapters/demo" // Disabled - no demo bids in production
 	_ "github.com/thenexusengine/tne_springwire/internal/adapters/kargo"
-	_ "github.com/thenexusengine/tne_springwire/internal/adapters/oms"
 	_ "github.com/thenexusengine/tne_springwire/internal/adapters/pubmatic"
 	_ "github.com/thenexusengine/tne_springwire/internal/adapters/rubicon"
 	_ "github.com/thenexusengine/tne_springwire/internal/adapters/sovrn"
@@ -349,10 +348,12 @@ func (s *Server) initHandlers() {
 		Strs("bidders", bidderMapping.Publisher.DefaultBidders).
 		Msg("Loaded bidder mapping configuration")
 
-	catalystBidHandler := endpoints.NewCatalystBidHandler(s.exchange, bidderMapping)
+	catalystBidHandler := endpoints.NewCatalystBidHandler(s.exchange, bidderMapping, s.publisher)
 	mux.HandleFunc("/v1/bid", catalystBidHandler.HandleBidRequest)
 
-	log.Info().Msg("Catalyst MAI Publisher endpoint registered: /v1/bid")
+	log.Info().
+		Bool("hierarchical_config", s.publisher != nil).
+		Msg("Catalyst MAI Publisher endpoint registered: /v1/bid")
 
 	// Static assets
 	mux.HandleFunc("/assets/tne-ads.js", endpoints.HandleAssets)
