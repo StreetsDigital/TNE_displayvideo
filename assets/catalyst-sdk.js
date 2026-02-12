@@ -180,11 +180,6 @@
       catalyst.log('Including user IDs for bidders:', Object.keys(userIds).join(', '));
     }
 
-    // Add privacy/consent info if available
-    if (window.__tcfapi || window.__uspapi || window.__cmp) {
-      catalyst._addPrivacyConsent(bidRequest);
-    }
-
     // Setup timeout
     var timedOut = false;
     var timeoutId = setTimeout(function() {
@@ -206,8 +201,10 @@
       timeoutId: timeoutId
     };
 
-    // Make POST request to /v1/bid endpoint
-    catalyst._makeBidRequest(bidRequest, function(error, response) {
+    // Get privacy consent data, then send bid request
+    var sendBidRequest = function() {
+      // Make POST request to /v1/bid endpoint
+      catalyst._makeBidRequest(bidRequest, function(error, response) {
       if (timedOut) {
         catalyst.log('Ignoring response after timeout');
         return;
@@ -232,7 +229,16 @@
       if (typeof callback === 'function') {
         callback(bids);
       }
-    });
+      });
+    };
+
+    // Add privacy/consent info if available, then send request
+    if (window.__tcfapi || window.__uspapi || window.__cmp) {
+      catalyst._addPrivacyConsent(bidRequest, sendBidRequest);
+    } else {
+      // No privacy APIs available, send immediately
+      sendBidRequest();
+    }
   };
 
   /**
@@ -396,41 +402,80 @@
   /**
    * Add privacy consent to bid request
    * @param {Object} bidRequest - Bid request object
+   * @param {Function} callback - Called when consent data is ready
    * @private
    */
-  catalyst._addPrivacyConsent = function(bidRequest) {
+  catalyst._addPrivacyConsent = function(bidRequest, callback) {
     bidRequest.user = bidRequest.user || {};
+
+    var tcfDone = false;
+    var uspDone = false;
+    var timeout = 200; // Max 200ms wait for consent data
+    var timeoutId = null;
+
+    var checkComplete = function() {
+      if ((tcfDone || !window.__tcfapi) && (uspDone || !window.__uspapi)) {
+        if (timeoutId) clearTimeout(timeoutId);
+        if (callback) callback();
+      }
+    };
+
+    // Timeout fallback - don't wait forever for consent data
+    timeoutId = setTimeout(function() {
+      catalyst.log('Privacy consent timeout, proceeding without full data');
+      tcfDone = true;
+      uspDone = true;
+      if (callback) callback();
+    }, timeout);
 
     // Try to get GDPR consent via TCF API
     if (window.__tcfapi) {
       try {
         window.__tcfapi('getTCData', 2, function(tcData, success) {
+          tcfDone = true;
           if (success && tcData) {
             bidRequest.user.gdprApplies = tcData.gdprApplies || false;
             bidRequest.user.consentGiven = tcData.eventStatus === 'tcloaded' || tcData.eventStatus === 'useractioncomplete';
 
-            // CRITICAL: Pass the actual TCF consent string for bidders
-            if (tcData.tcString) {
+            // CRITICAL: Pass the actual TCF consent string for bidders (only if GDPR applies)
+            if (tcData.gdprApplies && tcData.tcString) {
               bidRequest.user.consentString = tcData.tcString;
+              catalyst.log('Added TCF consent string for GDPR region');
             }
           }
+          checkComplete();
         });
       } catch (e) {
         catalyst.log('Error getting GDPR consent:', e);
+        tcfDone = true;
+        checkComplete();
       }
+    } else {
+      tcfDone = true;
     }
 
     // Try to get US Privacy string
     if (window.__uspapi) {
       try {
         window.__uspapi('getUSPData', 1, function(uspData, success) {
+          uspDone = true;
           if (success && uspData && uspData.uspString) {
             bidRequest.user.uspConsent = uspData.uspString;
           }
+          checkComplete();
         });
       } catch (e) {
         catalyst.log('Error getting USP consent:', e);
+        uspDone = true;
+        checkComplete();
       }
+    } else {
+      uspDone = true;
+    }
+
+    // If neither API is available, call back immediately
+    if (!window.__tcfapi && !window.__uspapi) {
+      checkComplete();
     }
   };
 
