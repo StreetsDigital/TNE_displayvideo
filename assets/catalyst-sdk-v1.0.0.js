@@ -146,6 +146,13 @@
         continue;
       }
 
+      // Skip out-of-page slots (special GPT formats like interstitials, overlays)
+      if (Array.isArray(slot.sizes) && slot.sizes.length === 1 &&
+          typeof slot.sizes[0] === 'string' && slot.sizes[0].toLowerCase() === 'out-of-page') {
+        catalyst.log('Skipping out-of-page slot (not eligible for bidding):', slot.divId);
+        continue;
+      }
+
       // Normalize sizes to [[w, h], ...] format
       var normalizedSizes = catalyst._normalizeSizes(slot.sizes);
       if (!normalizedSizes || normalizedSizes.length === 0) {
