@@ -461,15 +461,23 @@
           uspDone = true;
           if (success && uspData && uspData.uspString) {
             bidRequest.user.uspConsent = uspData.uspString;
+          } else {
+            // CMP present but no USP string - use permissive default for testing
+            bidRequest.user.uspConsent = '1YNN';
           }
           checkComplete();
         });
       } catch (e) {
         catalyst.log('Error getting USP consent:', e);
+        // Use permissive default on error
+        bidRequest.user.uspConsent = '1YNN';
         uspDone = true;
         checkComplete();
       }
     } else {
+      // No CMP - use permissive default for testing
+      // TODO PRODUCTION: Remove this default and require proper CMP
+      bidRequest.user.uspConsent = '1YNN';
       uspDone = true;
     }
 
@@ -726,15 +734,25 @@
           if (success && uspData && uspData.uspString) {
             syncRequest.us_privacy = uspData.uspString;
             catalyst.log('Added USP consent string for cookie sync');
+          } else {
+            // CMP present but no USP string - use permissive default for testing
+            syncRequest.us_privacy = '1YNN';
+            catalyst.log('Using default USP string (CMP present but no data)');
           }
           checkComplete();
         });
       } catch (e) {
         catalyst.log('Error getting USP consent for sync:', e);
+        // Use permissive default on error
+        syncRequest.us_privacy = '1YNN';
         uspDone = true;
         checkComplete();
       }
     } else {
+      // No CMP - use permissive default for testing
+      // TODO PRODUCTION: Remove this default and require proper CMP
+      syncRequest.us_privacy = '1YNN';
+      catalyst.log('Using default USP string (no CMP found)');
       uspDone = true;
     }
 
