@@ -404,6 +404,7 @@ func (s *Server) buildHandler(mux *http.ServeMux) http.Handler {
 	// Initialize middleware
 	cors := middleware.NewCORS(middleware.DefaultCORSConfig())
 	security := middleware.NewSecurity(nil)
+	adminAuth := middleware.AdminAuth  // Admin API key authentication
 	publisherAuth := middleware.NewPublisherAuth(middleware.DefaultPublisherAuthConfig())
 	sizeLimiter := middleware.NewSizeLimiter(middleware.DefaultSizeLimitConfig())
 	gzipMiddleware := middleware.NewGzip(middleware.DefaultGzipConfig())
@@ -429,7 +430,7 @@ func (s *Server) buildHandler(mux *http.ServeMux) http.Handler {
 		Bool("rate_limiting_enabled", s.rateLimiter != nil).
 		Msg("Middleware chain built")
 
-	// Build chain: CORS -> Security -> Logging -> Size Limit -> PublisherAuth -> Rate Limit -> Metrics -> Gzip -> Handler
+	// Build chain: CORS -> Security -> AdminAuth -> Logging -> Size Limit -> PublisherAuth -> Rate Limit -> Metrics -> Gzip -> Handler
 	handler := http.Handler(mux)
 	handler = gzipMiddleware.Middleware(handler)
 	handler = s.metrics.Middleware(handler)
@@ -437,6 +438,7 @@ func (s *Server) buildHandler(mux *http.ServeMux) http.Handler {
 	handler = publisherAuth.Middleware(handler)
 	handler = sizeLimiter.Middleware(handler)
 	handler = loggingMiddleware(handler)
+	handler = adminAuth(handler)  // Admin endpoint authentication
 	handler = security.Middleware(handler)
 	handler = cors.Middleware(handler)
 

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/thenexusengine/tne_springwire/internal/adapters"
 	"github.com/thenexusengine/tne_springwire/internal/openrtb"
@@ -48,9 +49,24 @@ func (a *Adapter) MakeBids(request *openrtb.BidRequest, responseData *adapters.R
 		return nil, []error{fmt.Errorf("unexpected status: %d", responseData.StatusCode)}
 	}
 
+	// Validate Content-Type before parsing JSON
+	contentType := responseData.Headers.Get("Content-Type")
+	if contentType != "" && !strings.Contains(strings.ToLower(contentType), "application/json") {
+		bodyPreview := string(responseData.Body)
+		if len(bodyPreview) > 200 {
+			bodyPreview = bodyPreview[:200] + "..."
+		}
+		return nil, []error{fmt.Errorf("invalid Content-Type: %s (expected application/json). Body preview: %s", contentType, bodyPreview)}
+	}
+
 	var bidResp openrtb.BidResponse
 	if err := json.Unmarshal(responseData.Body, &bidResp); err != nil {
-		return nil, []error{fmt.Errorf("failed to parse response: %w", err)}
+		// Enhanced error with response body preview for debugging
+		bodyPreview := string(responseData.Body)
+		if len(bodyPreview) > 500 {
+			bodyPreview = bodyPreview[:500] + "..."
+		}
+		return nil, []error{fmt.Errorf("failed to parse JSON response: %w. Content-Type: %s, Body preview: %s", err, contentType, bodyPreview)}
 	}
 
 	response := &adapters.BidderResponse{Currency: bidResp.Cur, ResponseID: bidResp.ID, Bids: make([]*adapters.TypedBid, 0)}

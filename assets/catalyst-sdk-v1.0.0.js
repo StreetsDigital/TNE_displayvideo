@@ -116,8 +116,6 @@
     var startTime = Date.now();
     var timeoutMs = catalyst._config.timeout;
 
-    catalyst.log('Requesting bids for', config.slots.length, 'slots with timeout', timeoutMs + 'ms');
-
     // Build MAI bid request
     var bidRequest = {
       accountId: catalyst._config.accountId,
@@ -171,6 +169,17 @@
         enabled_bidders: slot.enabled_bidders || ['catalyst']
       });
     }
+
+    // Early exit if no eligible slots - prevents empty bid requests
+    if (bidRequest.slots.length === 0) {
+      catalyst.log('No eligible slots found - skipping bid request (all slots filtered out or not ready)');
+      if (typeof callback === 'function') {
+        callback([]);
+      }
+      return;
+    }
+
+    catalyst.log('Requesting bids for', bidRequest.slots.length, 'slots with timeout', timeoutMs + 'ms');
 
     // Add page context if provided
     if (config.page) {
@@ -754,6 +763,18 @@
       iframe.setAttribute('data-bidder', bidder);
       document.body.appendChild(iframe);
       catalyst.log('Fired iframe sync for', bidder);
+
+      // Remove iframe after 10 seconds to prevent memory leak
+      setTimeout(function() {
+        try {
+          if (iframe.parentNode) {
+            iframe.parentNode.removeChild(iframe);
+            catalyst.log('Cleaned up iframe sync for', bidder);
+          }
+        } catch (e) {
+          catalyst.log('Error cleaning up iframe sync for', bidder, e);
+        }
+      }, 10000);
     } catch (e) {
       catalyst.log('Error firing iframe sync for', bidder, e);
     }

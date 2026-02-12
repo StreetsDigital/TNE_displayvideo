@@ -130,10 +130,13 @@ type MAIPage struct {
 
 // MAIUser represents user/privacy info
 type MAIUser struct {
-	ConsentGiven bool              `json:"consentGiven,omitempty"`
-	GDPRApplies  bool              `json:"gdprApplies,omitempty"`
-	USPConsent   string            `json:"uspConsent,omitempty"`
-	UserIds      map[string]string `json:"userIds,omitempty"` // Bidder-specific user IDs from cookie sync
+	ConsentGiven   bool                     `json:"consentGiven,omitempty"`
+	ConsentString  string                   `json:"consentString,omitempty"`  // TCFv2 consent string
+	GDPRApplies    bool                     `json:"gdprApplies,omitempty"`
+	USPConsent     string                   `json:"uspConsent,omitempty"`
+	UserIds        map[string]string        `json:"userIds,omitempty"`        // Bidder-specific user IDs from cookie sync
+	Data           []map[string]interface{} `json:"data,omitempty"`           // ORTB2 user data segments
+	Ext            map[string]interface{}   `json:"ext,omitempty"`            // Additional user extensions
 }
 
 // MAIDevice represents device info
@@ -175,16 +178,7 @@ func (h *CatalystBidHandler) HandleBidRequest(w http.ResponseWriter, r *http.Req
 	log := logger.Log
 	startTime := time.Now()
 
-	// Set CORS headers
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
-	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-
-	// Handle preflight
-	if r.Method == "OPTIONS" {
-		w.WriteHeader(http.StatusOK)
-		return
-	}
+	// CORS is handled by middleware - removed hardcoded wildcard
 
 	// Only accept POST
 	if r.Method != "POST" {
@@ -198,7 +192,13 @@ func (h *CatalystBidHandler) HandleBidRequest(w http.ResponseWriter, r *http.Req
 
 	// Parse MAI bid request
 	var maiBidReq MAIBidRequest
-	bodyBytes, err := io.ReadAll(r.Body)
+
+	// Close body when done
+	defer r.Body.Close()
+
+	// Limit request body size to prevent DoS attacks (1MB limit)
+	const maxRequestBodySize = 1024 * 1024 // 1MB
+	bodyBytes, err := io.ReadAll(io.LimitReader(r.Body, maxRequestBodySize))
 	if err != nil {
 		log.Error().
 			Err(err).
@@ -402,41 +402,44 @@ func (h *CatalystBidHandler) convertToOpenRTB(r *http.Request, maiBid *MAIBidReq
 		// List of bidders to look up
 		bidders := []string{"rubicon", "kargo", "sovrn", "pubmatic", "triplelift"}
 
-		// For each bidder, use hierarchical config lookup
-		for _, bidderCode := range bidders {
-			var params map[string]interface{}
-			var err error
-
-			// Try database hierarchical lookup first
-			// Hierarchical lookup will fall back to publisher-level if adUnitPath is empty
-			if h.publisherStore != nil {
-				params, err = h.publisherStore.GetBidderConfigHierarchical(
-					r.Context(),
-					maiBid.AccountID,
-					domain,
-					slot.AdUnitPath, // May be empty - hierarchical lookup handles this
-					bidderCode,
-				)
-				if err != nil {
-					logger.Log.Error().
-						Err(err).
-						Str("publisher", maiBid.AccountID).
-						Str("domain", domain).
-						Str("ad_unit", slot.AdUnitPath).
-						Str("bidder", bidderCode).
-						Str("error_type", fmt.Sprintf("%T", err)).
-						Str("error_msg", err.Error()).
-						Msg("❌ Database error looking up hierarchical config")
-				} else if params != nil {
-					logger.Log.Debug().
-						Str("publisher", maiBid.AccountID).
-						Str("domain", domain).
-						Str("ad_unit", slot.AdUnitPath).
-						Str("bidder", bidderCode).
-						Interface("params", params).
-						Msg("✓ Found bidder config in database")
-				}
+		// OPTIMIZED: Batch lookup all bidder configs in a single database query (was 5x3=15 queries before!)
+		var allConfigs map[string]map[string]interface{}
+		var err error
+		if h.publisherStore != nil {
+			allConfigs, err = h.publisherStore.GetAllBidderConfigsHierarchical(
+				r.Context(),
+				maiBid.AccountID,
+				domain,
+				slot.AdUnitPath, // May be empty - hierarchical lookup handles this
+				bidders,
+			)
+			if err != nil {
+				logger.Log.Error().
+					Err(err).
+					Str("publisher", maiBid.AccountID).
+					Str("domain", domain).
+					Str("ad_unit", slot.AdUnitPath).
+					Str("error_type", fmt.Sprintf("%T", err)).
+					Str("error_msg", err.Error()).
+					Msg("❌ Database error looking up bidder configs")
+				allConfigs = make(map[string]map[string]interface{})
+			} else {
+				logger.Log.Info().
+					Str("ad_unit", slot.AdUnitPath).
+					Strs("bidder_names", getConfiguredBidders(allConfigs)).
+					Int("bidders_configured", len(allConfigs)).
+					Str("publisher", maiBid.AccountID).
+					Str("domain", domain).
+					Interface("full_config", allConfigs).
+					Msg("✓ Injected bidder parameters using hierarchical config")
 			}
+		} else {
+			allConfigs = make(map[string]map[string]interface{})
+		}
+
+		// Now populate impExt with configs
+		for _, bidderCode := range bidders {
+			params := allConfigs[bidderCode]
 
 			// If no DB config found, fall back to mapping file (only if we have adUnitPath)
 			if params == nil && h.mapping != nil && slot.AdUnitPath != "" {
@@ -622,12 +625,23 @@ func (h *CatalystBidHandler) convertToOpenRTB(r *http.Request, maiBid *MAIBidReq
 				Msg("Populated user IDs from cookie sync")
 		}
 
-		// LEGACY: Set consent string at top level (OpenRTB 2.5 compatibility)
+		// Set TCF consent string (OpenRTB 2.5+ compliance)
 		if maiBid.User != nil {
-			if maiBid.User.ConsentGiven {
-				user.Consent = "1"
+			// Use actual TCF string from SDK if available
+			if maiBid.User.ConsentString != "" {
+				user.Consent = maiBid.User.ConsentString
+				previewLen := min(20, len(maiBid.User.ConsentString))
+				logger.Log.Debug().
+					Str("consent_string_preview", maiBid.User.ConsentString[:previewLen]).
+					Msg("Using TCFv2 consent string from SDK")
+			} else if maiBid.User.ConsentGiven {
+				// Fallback: If no TCF string but consent was given
+				logger.Log.Warn().
+					Str("account_id", maiBid.AccountID).
+					Msg("GDPR consent given but no TCF string provided - bidders may reject")
+				user.Consent = "1"  // Non-compliant fallback
 			} else {
-				user.Consent = "0"
+				user.Consent = "0"  // No consent
 			}
 		}
 	}
@@ -786,6 +800,16 @@ func getBidderKeys(userIDs map[string]string) []string {
 func getBidderNames(impExt map[string]interface{}) []string {
 	keys := make([]string, 0, len(impExt))
 	for k := range impExt {
+		keys = append(keys, k)
+	}
+	return keys
+}
+
+
+// getConfiguredBidders extracts bidder names from config map for logging
+func getConfiguredBidders(configs map[string]map[string]interface{}) []string {
+	keys := make([]string, 0, len(configs))
+	for k := range configs {
 		keys = append(keys, k)
 	}
 	return keys

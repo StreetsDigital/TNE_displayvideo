@@ -58,3 +58,8 @@ coverage.html
 cpu.prof
 mem.prof
 .claude/settings.local.json
+
+# Production environment files with credentials
+deployment/.env.production
+deployment/.env.production.backup
+deployment/.env.staging

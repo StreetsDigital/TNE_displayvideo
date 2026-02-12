@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/thenexusengine/tne_springwire/pkg/logger"
-	_ "github.com/lib/pq" // PostgreSQL driver
+	"github.com/lib/pq" // PostgreSQL driver (use pq.Array for batch queries)
 )
 
 // Publisher represents a publisher configuration from the database
@@ -506,4 +506,115 @@ func NewDBConnection(ctx context.Context, host, port, user, password, dbname, ss
 	}
 
 	return db, nil
+}
+
+// GetAllBidderConfigsHierarchical retrieves all bidder configurations with hierarchical fallback in a single batch
+// This is much more efficient than calling GetBidderConfigHierarchical for each bidder separately
+// Returns map[bidderCode]params
+func (s *PublisherStore) GetAllBidderConfigsHierarchical(ctx context.Context, publisherID, domain, adUnitPath string, bidders []string) (map[string]map[string]interface{}, error) {
+	if len(bidders) == 0 {
+		return make(map[string]map[string]interface{}), nil
+	}
+
+	result := make(map[string]map[string]interface{})
+	remaining := make(map[string]bool)
+	for _, b := range bidders {
+		remaining[b] = true
+	}
+
+	// Try unit-level configs first (most specific)
+	if adUnitPath != "" {
+		query := `SELECT bidder_code, params FROM unit_bidder_configs 
+		          WHERE publisher_id = $1 AND domain = $2 AND ad_unit_path = $3 AND bidder_code = ANY($4)`
+		
+		rows, err := s.db.QueryContext(ctx, query, publisherID, domain, adUnitPath, pq.Array(bidders))
+		if err != nil {
+			return nil, fmt.Errorf("error querying unit-level configs: %w", err)
+		}
+		defer rows.Close()
+
+		for rows.Next() {
+			var bidderCode string
+			var paramsJSON []byte
+			if err := rows.Scan(&bidderCode, &paramsJSON); err != nil {
+				return nil, fmt.Errorf("error scanning unit-level config: %w", err)
+			}
+
+			var params map[string]interface{}
+			if err := json.Unmarshal(paramsJSON, &params); err != nil {
+				return nil, fmt.Errorf("error unmarshaling unit-level params: %w", err)
+			}
+
+			result[bidderCode] = params
+			delete(remaining, bidderCode)
+		}
+	}
+
+	// Try domain-level configs for remaining bidders
+	if domain != "" && len(remaining) > 0 {
+		remainingBidders := make([]string, 0, len(remaining))
+		for b := range remaining {
+			remainingBidders = append(remainingBidders, b)
+		}
+
+		query := `SELECT bidder_code, params FROM domain_bidder_configs 
+		          WHERE publisher_id = $1 AND domain = $2 AND bidder_code = ANY($3)`
+		
+		rows, err := s.db.QueryContext(ctx, query, publisherID, domain, pq.Array(remainingBidders))
+		if err != nil {
+			return nil, fmt.Errorf("error querying domain-level configs: %w", err)
+		}
+		defer rows.Close()
+
+		for rows.Next() {
+			var bidderCode string
+			var paramsJSON []byte
+			if err := rows.Scan(&bidderCode, &paramsJSON); err != nil {
+				return nil, fmt.Errorf("error scanning domain-level config: %w", err)
+			}
+
+			var params map[string]interface{}
+			if err := json.Unmarshal(paramsJSON, &params); err != nil {
+				return nil, fmt.Errorf("error unmarshaling domain-level params: %w", err)
+			}
+
+			result[bidderCode] = params
+			delete(remaining, bidderCode)
+		}
+	}
+
+	// Get publisher-level configs for any remaining bidders
+	if len(remaining) > 0 {
+		remainingBidders := make([]string, 0, len(remaining))
+		for b := range remaining {
+			remainingBidders = append(remainingBidders, b)
+		}
+
+		query := `SELECT bidder_code, params FROM publishers 
+		          WHERE publisher_id = $1 AND bidder_code = ANY($2)`
+		
+		rows, err := s.db.QueryContext(ctx, query, publisherID, pq.Array(remainingBidders))
+		if err != nil {
+			return nil, fmt.Errorf("error querying publisher-level configs: %w", err)
+		}
+		defer rows.Close()
+
+		for rows.Next() {
+			var bidderCode string
+			var paramsJSON []byte
+			if err := rows.Scan(&bidderCode, &paramsJSON); err != nil {
+				return nil, fmt.Errorf("error scanning publisher-level config: %w", err)
+			}
+
+			var params map[string]interface{}
+			if err := json.Unmarshal(paramsJSON, &params); err != nil {
+				return nil, fmt.Errorf("error unmarshaling publisher-level params: %w", err)
+			}
+
+			result[bidderCode] = params
+			delete(remaining, bidderCode)
+		}
+	}
+
+	return result, nil
 }
