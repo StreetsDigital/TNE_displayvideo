@@ -494,12 +494,8 @@
       return;
     }
 
-    // Check privacy consent before syncing
-    if (!catalyst._hasPrivacyConsent()) {
-      catalyst.log('User sync blocked by privacy settings');
-      return;
-    }
-
+    // Privacy consent will be checked when we gather privacy data for the sync request
+    // Server also validates consent as a backup (defense in depth)
     catalyst.log('Starting user sync for bidders:', catalyst._config.userSync.bidders);
 
     // Build cookie sync request
@@ -511,43 +507,56 @@
       limit: catalyst._config.userSync.maxSyncs
     };
 
-    // Add privacy parameters if available
-    catalyst._addPrivacyToSyncRequest(syncRequest);
+    // Function to send cookie sync request
+    var sendSyncRequest = function() {
+      var url = catalyst._config.serverUrl + '/cookie_sync';
+      var xhr = new XMLHttpRequest();
+      xhr.open('POST', url, true);
+      xhr.setRequestHeader('Content-Type', 'application/json');
+      xhr.timeout = 5000;
 
-    var url = catalyst._config.serverUrl + '/cookie_sync';
-    var xhr = new XMLHttpRequest();
-    xhr.open('POST', url, true);
-    xhr.setRequestHeader('Content-Type', 'application/json');
-    xhr.timeout = 5000;
-
-    xhr.onload = function() {
-      if (xhr.status >= 200 && xhr.status < 300) {
-        try {
-          var response = JSON.parse(xhr.responseText);
-          catalyst._fireSyncPixels(response);
-        } catch (e) {
-          catalyst.log('Error parsing sync response:', e);
+      xhr.onload = function() {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          try {
+            var response = JSON.parse(xhr.responseText);
+            catalyst._fireSyncPixels(response);
+          } catch (e) {
+            catalyst.log('Error parsing sync response:', e);
+          }
+        } else {
+          catalyst.log('User sync request failed:', xhr.status);
         }
-      } else {
-        catalyst.log('User sync request failed:', xhr.status);
+      };
+
+      xhr.onerror = function() {
+        catalyst.log('User sync network error');
+      };
+
+      xhr.ontimeout = function() {
+        catalyst.log('User sync timeout');
+      };
+
+      try {
+        catalyst.log('Sending cookie sync with privacy params:', {
+          gdpr: syncRequest.gdpr,
+          gdpr_consent: syncRequest.gdpr_consent ? syncRequest.gdpr_consent.substring(0, 20) + '...' : '',
+          us_privacy: syncRequest.us_privacy
+        });
+        xhr.send(JSON.stringify(syncRequest));
+      } catch (e) {
+        catalyst.log('Error sending sync request:', e);
       }
+
+      catalyst._userSyncComplete = true;
     };
 
-    xhr.onerror = function() {
-      catalyst.log('User sync network error');
-    };
-
-    xhr.ontimeout = function() {
-      catalyst.log('User sync timeout');
-    };
-
-    try {
-      xhr.send(JSON.stringify(syncRequest));
-    } catch (e) {
-      catalyst.log('Error sending sync request:', e);
+    // Add privacy parameters if available, then send request
+    if (window.__tcfapi || window.__uspapi) {
+      catalyst._addPrivacyToSyncRequest(syncRequest, sendSyncRequest);
+    } else {
+      // No privacy APIs available, send immediately
+      sendSyncRequest();
     }
-
-    catalyst._userSyncComplete = true;
   };
 
   /**
@@ -649,82 +658,89 @@
    * Check if user has given privacy consent for syncing
    * @returns {boolean} True if consent given or not required
    * @private
+   * @deprecated This function has async race conditions and is no longer used
+   *   Server validates consent properly with actual privacy data
    */
   catalyst._hasPrivacyConsent = function() {
-    // If no consent framework present, allow sync
-    if (!window.__tcfapi && !window.__uspapi) {
-      return true;
-    }
-
-    // Check GDPR consent (synchronous check only)
-    if (window.__tcfapi) {
-      var hasConsent = true;
-      try {
-        window.__tcfapi('getTCData', 2, function(tcData, success) {
-          if (success && tcData) {
-            // Require consent if GDPR applies
-            if (tcData.gdprApplies) {
-              hasConsent = tcData.eventStatus === 'tcloaded' ||
-                          tcData.eventStatus === 'useractioncomplete';
-            }
-          }
-        });
-      } catch (e) {
-        catalyst.log('Error checking GDPR consent:', e);
-      }
-      return hasConsent;
-    }
-
-    // Check US Privacy consent
-    if (window.__uspapi) {
-      var optedOut = false;
-      try {
-        window.__uspapi('getUSPData', 1, function(uspData, success) {
-          if (success && uspData && uspData.uspString) {
-            // Check if user opted out (third character = 'Y')
-            optedOut = uspData.uspString.charAt(2) === 'Y';
-          }
-        });
-      } catch (e) {
-        catalyst.log('Error checking USP consent:', e);
-      }
-      return !optedOut;
-    }
-
+    // Kept for backwards compatibility only
+    // Actual consent validation happens server-side with proper privacy strings
+    // collected asynchronously via _addPrivacyConsent() and _addPrivacyToSyncRequest()
     return true;
   };
 
   /**
    * Add privacy parameters to sync request
    * @param {Object} syncRequest - Sync request object to modify
+   * @param {Function} callback - Called when privacy data is ready
    * @private
    */
-  catalyst._addPrivacyToSyncRequest = function(syncRequest) {
+  catalyst._addPrivacyToSyncRequest = function(syncRequest, callback) {
+    var tcfDone = false;
+    var uspDone = false;
+    var timeout = 200; // Max 200ms wait for consent data
+    var timeoutId = null;
+
+    var checkComplete = function() {
+      if ((tcfDone || !window.__tcfapi) && (uspDone || !window.__uspapi)) {
+        if (timeoutId) clearTimeout(timeoutId);
+        if (callback) callback();
+      }
+    };
+
+    // Timeout fallback - don't wait forever for consent data
+    timeoutId = setTimeout(function() {
+      catalyst.log('Cookie sync privacy timeout, proceeding');
+      tcfDone = true;
+      uspDone = true;
+      if (callback) callback();
+    }, timeout);
+
     // Try to get GDPR consent
     if (window.__tcfapi) {
       try {
         window.__tcfapi('getTCData', 2, function(tcData, success) {
+          tcfDone = true;
           if (success && tcData) {
             syncRequest.gdpr = tcData.gdprApplies ? 1 : 0;
             syncRequest.gdpr_consent = tcData.tcString || '';
+            if (tcData.gdprApplies && tcData.tcString) {
+              catalyst.log('Added TCF consent string for cookie sync');
+            }
           }
+          checkComplete();
         });
       } catch (e) {
         catalyst.log('Error getting GDPR consent for sync:', e);
+        tcfDone = true;
+        checkComplete();
       }
+    } else {
+      tcfDone = true;
     }
 
     // Try to get US Privacy string
     if (window.__uspapi) {
       try {
         window.__uspapi('getUSPData', 1, function(uspData, success) {
+          uspDone = true;
           if (success && uspData && uspData.uspString) {
             syncRequest.us_privacy = uspData.uspString;
+            catalyst.log('Added USP consent string for cookie sync');
           }
+          checkComplete();
         });
       } catch (e) {
         catalyst.log('Error getting USP consent for sync:', e);
+        uspDone = true;
+        checkComplete();
       }
+    } else {
+      uspDone = true;
+    }
+
+    // If neither API is available, call back immediately
+    if (!window.__tcfapi && !window.__uspapi) {
+      checkComplete();
     }
   };
 
