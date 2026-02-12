@@ -149,7 +149,10 @@
       // Normalize sizes to [[w, h], ...] format
       var normalizedSizes = catalyst._normalizeSizes(slot.sizes);
       if (!normalizedSizes || normalizedSizes.length === 0) {
-        catalyst.log('Warning: Could not normalize sizes for slot:', slot.divId);
+        catalyst.log('Warning: Could not normalize sizes for slot:', slot.divId,
+                     '| Raw sizes:', JSON.stringify(slot.sizes),
+                     '| Type:', typeof slot.sizes,
+                     '| Full slot:', JSON.stringify(slot));
         continue;
       }
 
@@ -882,6 +885,7 @@
    */
   catalyst._normalizeSizes = function(sizes) {
     if (!sizes) {
+      catalyst.log('DEBUG: _normalizeSizes received null/undefined');
       return [];
     }
 
@@ -892,23 +896,58 @@
       for (var i = 0; i < sizes.length; i++) {
         var size = sizes[i];
 
+        // Skip null/undefined entries
+        if (size == null) {
+          catalyst.log('DEBUG: Skipping null/undefined size at index', i);
+          continue;
+        }
+
         // Already in [width, height] format
         if (Array.isArray(size) && size.length === 2 &&
-            typeof size[0] === 'number' && typeof size[1] === 'number') {
+            typeof size[0] === 'number' && typeof size[1] === 'number' &&
+            size[0] > 0 && size[1] > 0) {
           normalized.push(size);
+        }
+        // Try to coerce array with string numbers: ["300", "250"]
+        else if (Array.isArray(size) && size.length === 2) {
+          var w = parseInt(size[0], 10);
+          var h = parseInt(size[1], 10);
+          if (!isNaN(w) && !isNaN(h) && w > 0 && h > 0) {
+            normalized.push([w, h]);
+            catalyst.log('DEBUG: Coerced string sizes to numbers:', [w, h]);
+          } else {
+            catalyst.log('DEBUG: Could not coerce array size:', JSON.stringify(size));
+          }
         }
         // String format: "300x250"
         else if (typeof size === 'string') {
           var parsed = catalyst._parseSizeString(size);
           if (parsed) {
             normalized.push(parsed);
+          } else {
+            catalyst.log('DEBUG: Could not parse size string:', size);
           }
         }
         // Single [width, height] - not nested
-        else if (i === 0 && typeof size === 'number' && typeof sizes[1] === 'number') {
+        else if (i === 0 && typeof size === 'number' && typeof sizes[1] === 'number' &&
+                 size > 0 && sizes[1] > 0) {
           // Input is [300, 250] not [[300, 250]]
           normalized.push([sizes[0], sizes[1]]);
           break; // Done processing
+        }
+        // Object format: {width: 300, height: 250} or {w: 300, h: 250}
+        else if (typeof size === 'object') {
+          var w = size.width || size.w;
+          var h = size.height || size.h;
+          if (typeof w === 'number' && typeof h === 'number' && w > 0 && h > 0) {
+            normalized.push([w, h]);
+            catalyst.log('DEBUG: Converted object size to array:', [w, h]);
+          } else {
+            catalyst.log('DEBUG: Invalid object size format:', JSON.stringify(size));
+          }
+        }
+        else {
+          catalyst.log('DEBUG: Unrecognized size format at index', i, ':', JSON.stringify(size), 'type:', typeof size);
         }
       }
     }
@@ -917,7 +956,27 @@
       var parsed = catalyst._parseSizeString(sizes);
       if (parsed) {
         normalized.push(parsed);
+      } else {
+        catalyst.log('DEBUG: Could not parse sizes string:', sizes);
       }
+    }
+    // Handle object input: {width: 300, height: 250}
+    else if (typeof sizes === 'object') {
+      var w = sizes.width || sizes.w;
+      var h = sizes.height || sizes.h;
+      if (typeof w === 'number' && typeof h === 'number' && w > 0 && h > 0) {
+        normalized.push([w, h]);
+        catalyst.log('DEBUG: Converted object sizes to array:', [w, h]);
+      } else {
+        catalyst.log('DEBUG: Invalid object sizes format:', JSON.stringify(sizes));
+      }
+    }
+    else {
+      catalyst.log('DEBUG: Unrecognized sizes type:', typeof sizes, 'value:', sizes);
+    }
+
+    if (normalized.length === 0) {
+      catalyst.log('DEBUG: _normalizeSizes returning empty array. Input was:', JSON.stringify(sizes));
     }
 
     return normalized;
