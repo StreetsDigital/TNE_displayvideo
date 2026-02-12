@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/thenexusengine/tne_springwire/internal/adapters"
+	"github.com/thenexusengine/tne_springwire/internal/analytics"
 	"github.com/thenexusengine/tne_springwire/internal/fpd"
 	"github.com/thenexusengine/tne_springwire/internal/middleware"
 	"github.com/thenexusengine/tne_springwire/internal/openrtb"
@@ -66,6 +67,7 @@ type Exchange struct {
 	eidFilter         *fpd.EIDFilter
 	metrics           MetricsRecorder
 	currencyConverter *currency.Converter
+	analytics         analytics.Module // NEW: Analytics module for rich auction transaction data
 
 	// Per-bidder circuit breakers to prevent cascade failures
 	bidderBreakers   map[string]*idr.CircuitBreaker
@@ -135,6 +137,7 @@ type Config struct {
 	CurrencyConv         bool
 	DefaultCurrency      string
 	CurrencyConverter    *currency.Converter // Currency conversion support
+	Analytics            analytics.Module     // NEW: Analytics module for rich auction transaction data
 	FPD                  *fpd.Config
 	CloneLimits          *CloneLimits // P3-1: Configurable clone limits
 	// Auction configuration
@@ -251,6 +254,7 @@ func New(registry *adapters.Registry, config *Config) *Exchange {
 		eidFilter:         fpd.NewEIDFilter(fpdConfig),
 		bidderBreakers:    make(map[string]*idr.CircuitBreaker),
 		currencyConverter: config.CurrencyConverter,
+		analytics:         config.Analytics, // NEW: Set analytics module from config
 	}
 
 	// Initialize circuit breaker for each registered bidder
@@ -285,7 +289,14 @@ func (e *Exchange) Close() error {
 	}
 	e.bidderBreakersMu.RUnlock()
 
-	// Flush event recorder
+	// Shutdown analytics module (flush buffers)
+	if e.analytics != nil {
+		if err := e.analytics.Shutdown(); err != nil {
+			logger.Log.Warn().Err(err).Msg("Failed to shutdown analytics module")
+		}
+	}
+
+	// Flush event recorder (legacy - will be removed after migration)
 	if e.eventRecorder != nil {
 		return e.eventRecorder.Close()
 	}
@@ -1694,7 +1705,297 @@ func (e *Exchange) RunAuction(ctx context.Context, req *AuctionRequest) (*Auctio
 		e.metrics.RecordAuction(auctionStatus, mediaType, response.DebugInfo.TotalLatency, len(selectedBidders), 0)
 	}
 
+	// NEW: Log analytics object with rich auction transaction data
+	if e.analytics != nil {
+		auctionObj := e.buildAuctionObject(
+			ctx,
+			req,
+			response,
+			selectedBidders,
+			availableBidders,
+			startTime,
+		)
+
+		// Non-blocking analytics call - errors logged internally by analytics module
+		if err := e.analytics.LogAuctionObject(ctx, auctionObj); err != nil {
+			logger.Log.Warn().
+				Err(err).
+				Str("auction_id", req.BidRequest.ID).
+				Msg("Failed to log auction analytics")
+		}
+	}
+
 	return response, nil
+}
+
+// buildAuctionObject constructs a complete analytics.AuctionObject from auction results
+// This provides rich transaction data for multi-sink analytics (IDR, DataDog, BigQuery, etc.)
+func (e *Exchange) buildAuctionObject(
+	ctx context.Context,
+	req *AuctionRequest,
+	resp *AuctionResponse,
+	selectedBidders []string,
+	availableBidders []string,
+	startTime time.Time,
+) *analytics.AuctionObject {
+	// Extract publisher ID
+	publisherID := ""
+	if req.BidRequest.Site != nil && req.BidRequest.Site.Publisher != nil {
+		publisherID = req.BidRequest.Site.Publisher.ID
+	} else if req.BidRequest.App != nil && req.BidRequest.App.Publisher != nil {
+		publisherID = req.BidRequest.App.Publisher.ID
+	}
+
+	// Extract publisher domain
+	publisherDomain := ""
+	if req.BidRequest.Site != nil {
+		publisherDomain = req.BidRequest.Site.Domain
+	} else if req.BidRequest.App != nil {
+		publisherDomain = req.BidRequest.App.Bundle
+	}
+
+	// Build excluded bidders map
+	excludedBidders := make(map[string]analytics.ExclusionReason)
+	selectedMap := make(map[string]bool)
+	for _, bidder := range selectedBidders {
+		selectedMap[bidder] = true
+	}
+	for _, bidder := range availableBidders {
+		if !selectedMap[bidder] {
+			// Check if circuit breaker was reason
+			breaker := e.getBidderCircuitBreaker(bidder)
+			if breaker != nil && breaker.IsOpen() {
+				excludedBidders[bidder] = analytics.ExclusionReason{
+					Code:    "circuit_breaker_open",
+					Message: "Circuit breaker is open",
+				}
+			} else if resp.IDRResult != nil {
+				// Check if IDR excluded this bidder
+				for _, eb := range resp.IDRResult.ExcludedBidders {
+					if eb.BidderCode == bidder {
+						excludedBidders[bidder] = analytics.ExclusionReason{
+							Code:    "idr_excluded",
+							Message: eb.Reason,
+						}
+						break
+					}
+				}
+			}
+		}
+	}
+
+	// Convert bidder results to analytics format
+	analyticsResults := make(map[string]*analytics.BidderResult)
+	for bidderCode, result := range resp.BidderResults {
+		bids := make([]analytics.BidDetails, 0, len(result.Bids))
+		for _, tb := range result.Bids {
+			if tb != nil && tb.Bid != nil {
+				bids = append(bids, analytics.BidDetails{
+					BidID:         tb.Bid.ID,
+					ImpID:         tb.Bid.ImpID,
+					OriginalPrice: tb.Bid.Price,
+					AdjustedPrice: tb.Bid.Price, // Will be adjusted if multiplier applied
+					Currency:      result.Currency,
+					ADomain:       tb.Bid.ADomain,
+					CreativeID:    tb.Bid.CRID,
+					DemandType:    string(e.getDemandType(bidderCode)),
+				})
+			}
+		}
+
+		noBidReason := ""
+		if len(result.Errors) > 0 && len(result.Bids) == 0 {
+			noBidReason = result.Errors[0].Error()
+		}
+
+		analyticsResults[bidderCode] = &analytics.BidderResult{
+			BidderCode:  bidderCode,
+			Latency:     result.Latency,
+			HttpStatus:  0, // Not easily accessible from current structure
+			Bids:        bids,
+			SeatBids:    len(result.Bids),
+			TimedOut:    result.TimedOut,
+			NoBidReason: noBidReason,
+			Errors:      extractErrorStrings(result.Errors),
+		}
+	}
+
+	// Extract winning bids from response
+	winningBids := make([]analytics.WinningBid, 0)
+	if resp.BidResponse != nil {
+		for _, seatBid := range resp.BidResponse.SeatBid {
+			for _, bid := range seatBid.Bid {
+				winningBids = append(winningBids, analytics.WinningBid{
+					BidID:         bid.ID,
+					ImpID:         bid.ImpID,
+					BidderCode:    seatBid.Seat,
+					OriginalPrice: bid.Price,
+					AdjustedPrice: bid.Price,
+					PlatformCut:   0, // Calculate if multiplier applied
+					Currency:      resp.BidResponse.Cur,
+					ADomain:       bid.ADomain,
+					CreativeID:    bid.CRID,
+					DemandType:    "", // Extract from bid extension if needed
+					ClearPrice:    bid.Price,
+				})
+			}
+		}
+	}
+
+	// Determine auction status
+	status := "success"
+	if len(winningBids) == 0 {
+		status = "no_bids"
+	} else if len(resp.DebugInfo.Errors) > 0 {
+		status = "error"
+	}
+
+	// Convert impressions to analytics format
+	impressions := make([]analytics.Impression, 0, len(req.BidRequest.Imp))
+	for _, imp := range req.BidRequest.Imp {
+		mediaTypes := []string{}
+		sizes := []string{}
+
+		if imp.Banner != nil {
+			mediaTypes = append(mediaTypes, "banner")
+			if imp.Banner.W > 0 && imp.Banner.H > 0 {
+				sizes = append(sizes, fmt.Sprintf("%dx%d", imp.Banner.W, imp.Banner.H))
+			}
+		}
+		if imp.Video != nil {
+			mediaTypes = append(mediaTypes, "video")
+		}
+		if imp.Native != nil {
+			mediaTypes = append(mediaTypes, "native")
+		}
+		if imp.Audio != nil {
+			mediaTypes = append(mediaTypes, "audio")
+		}
+
+		impressions = append(impressions, analytics.Impression{
+			ID:         imp.ID,
+			MediaTypes: mediaTypes,
+			Sizes:      sizes,
+			Floor:      imp.BidFloor,
+		})
+	}
+
+	// Extract device info
+	var deviceInfo *analytics.DeviceInfo
+	if req.BidRequest.Device != nil {
+		deviceType := "unknown"
+		switch req.BidRequest.Device.DeviceType {
+		case 1:
+			deviceType = "mobile"
+		case 2:
+			deviceType = "desktop"
+		case 3:
+			deviceType = "ctv"
+		}
+
+		country := ""
+		region := ""
+		if req.BidRequest.Device.Geo != nil {
+			country = req.BidRequest.Device.Geo.Country
+			region = req.BidRequest.Device.Geo.Region
+		}
+
+		deviceInfo = &analytics.DeviceInfo{
+			Type:    deviceType,
+			Country: country,
+			Region:  region,
+			IP:      req.BidRequest.Device.IP,
+			UA:      req.BidRequest.Device.UA,
+		}
+	}
+
+	// Extract user info (privacy-safe)
+	var userInfo *analytics.UserInfo
+	if req.BidRequest.User != nil {
+		userInfo = &analytics.UserInfo{
+			BuyerUID: req.BidRequest.User.BuyerUID,
+			HasEIDs:  len(req.BidRequest.User.EIDs) > 0,
+		}
+	}
+
+	// Extract GDPR data
+	var gdprData *analytics.GDPRData
+	if req.BidRequest.Regs != nil && req.BidRequest.Regs.GDPR != nil {
+		gdprData = &analytics.GDPRData{
+			Applies: *req.BidRequest.Regs.GDPR == 1,
+		}
+		if req.BidRequest.User != nil {
+			gdprData.ConsentString = req.BidRequest.User.Consent
+		}
+	}
+
+	// Extract CCPA data
+	var ccpaData *analytics.CCPAData
+	if req.BidRequest.Regs != nil && req.BidRequest.Regs.Ext != nil {
+		// CCPA data is in regs.ext.us_privacy
+		ccpaData = &analytics.CCPAData{
+			Applies: false, // Would need to parse regs.ext
+		}
+	}
+
+	// Count total bids
+	totalBids := 0
+	for _, result := range resp.BidderResults {
+		totalBids += len(result.Bids)
+	}
+
+	return &analytics.AuctionObject{
+		AuctionID:        req.BidRequest.ID,
+		RequestID:        req.BidRequest.ID,
+		PublisherID:      publisherID,
+		PublisherDomain:  publisherDomain,
+		Timestamp:        startTime,
+		Impressions:      impressions,
+		Device:           deviceInfo,
+		User:             userInfo,
+		TMax:             req.BidRequest.TMax,
+		Currency:         e.config.DefaultCurrency,
+		Test:             req.BidRequest.Test == 1,
+		SelectedBidders:  selectedBidders,
+		ExcludedBidders:  excludedBidders,
+		TotalBidders:     len(availableBidders),
+		BidderResults:    analyticsResults,
+		WinningBids:      winningBids,
+		TotalBids:        totalBids,
+		AuctionDuration:  time.Since(startTime),
+		Status:           status,
+		BidMultiplier:    1.0, // TODO: Extract from context if multiplier applied
+		FloorAdjustments: make(map[string]float64),
+		TotalRevenue:     0, // TODO: Calculate platform cuts
+		TotalPayout:      0, // TODO: Calculate publisher payouts
+		GDPR:             gdprData,
+		CCPA:             ccpaData,
+		COPPA:            req.BidRequest.Regs != nil && req.BidRequest.Regs.COPPA == 1,
+		ConsentOK:        true, // TODO: Check actual consent status
+		ValidationErrors: []analytics.ValidationError{},
+		RequestErrors:    []string{},
+		BidderErrors:     extractBidderErrors(resp.DebugInfo),
+	}
+}
+
+// extractErrorStrings converts []error to []string
+func extractErrorStrings(errs []error) []string {
+	if len(errs) == 0 {
+		return nil
+	}
+	strs := make([]string, len(errs))
+	for i, err := range errs {
+		strs[i] = err.Error()
+	}
+	return strs
+}
+
+// extractBidderErrors converts debug info errors to map
+func extractBidderErrors(debug *DebugInfo) map[string][]string {
+	if debug == nil || len(debug.Errors) == 0 {
+		return nil
+	}
+	return debug.Errors
 }
 
 // callBiddersWithFPD calls all selected bidders in parallel with FPD support

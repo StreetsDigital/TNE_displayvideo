@@ -17,6 +17,8 @@ import (
 	_ "github.com/thenexusengine/tne_springwire/internal/adapters/rubicon"
 	_ "github.com/thenexusengine/tne_springwire/internal/adapters/sovrn"
 	_ "github.com/thenexusengine/tne_springwire/internal/adapters/triplelift"
+	"github.com/thenexusengine/tne_springwire/internal/analytics"
+	analyticsIDR "github.com/thenexusengine/tne_springwire/internal/analytics/idr"
 	pbsconfig "github.com/thenexusengine/tne_springwire/internal/config"
 	"github.com/thenexusengine/tne_springwire/internal/endpoints"
 	"github.com/thenexusengine/tne_springwire/internal/exchange"
@@ -24,6 +26,7 @@ import (
 	"github.com/thenexusengine/tne_springwire/internal/middleware"
 	"github.com/thenexusengine/tne_springwire/internal/storage"
 	"github.com/thenexusengine/tne_springwire/pkg/currency"
+	"github.com/thenexusengine/tne_springwire/pkg/idr"
 	"github.com/thenexusengine/tne_springwire/pkg/logger"
 	"github.com/thenexusengine/tne_springwire/pkg/redis"
 )
@@ -192,9 +195,41 @@ func (s *Server) initExchange() {
 		log.Info().Msg("Currency conversion disabled")
 	}
 
-	// Create exchange config with currency converter
+	// Initialize analytics modules
+	var analyticsModules []analytics.Module
+
+	// Initialize IDR analytics adapter if IDR is enabled
+	if s.config.IDREnabled && s.config.IDRUrl != "" {
+		// Create IDR client for analytics
+		idrClient := idr.NewClient(s.config.IDRUrl, 150*time.Millisecond, s.config.IDRAPIKey)
+
+		// Create IDR adapter with configuration
+		idrAdapter := analyticsIDR.NewAdapter(idrClient, &analyticsIDR.Config{
+			BufferSize:  s.config.ToExchangeConfig().EventBufferSize,
+			VerboseMode: false, // Can be made configurable via env var
+		})
+
+		analyticsModules = append(analyticsModules, idrAdapter)
+
+		log.Info().
+			Str("adapter", "idr").
+			Str("idr_url", s.config.IDRUrl).
+			Msg("Analytics adapter enabled")
+	}
+
+	// Create multi-module broadcaster if any modules are enabled
+	var analyticsModule analytics.Module
+	if len(analyticsModules) > 0 {
+		analyticsModule = analytics.NewMultiModule(analyticsModules...)
+		log.Info().
+			Int("adapter_count", len(analyticsModules)).
+			Msg("Analytics module initialized with multi-sink broadcasting")
+	}
+
+	// Create exchange config with currency converter and analytics
 	exchangeConfig := s.config.ToExchangeConfig()
 	exchangeConfig.CurrencyConverter = s.currencyConverter
+	exchangeConfig.Analytics = analyticsModule
 
 	// Create exchange with default registry
 	s.exchange = exchange.New(adapters.DefaultRegistry, exchangeConfig)
