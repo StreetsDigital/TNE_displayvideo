@@ -180,6 +180,54 @@
       catalyst.log('Including user IDs for bidders:', Object.keys(userIds).join(', '));
     }
 
+    // Collect ORTB2 data from Prebid.js
+    var ortb2Data = catalyst._getORTB2Data();
+
+    // Merge ORTB2 site data (content categories, keywords, etc.)
+    if (ortb2Data.site) {
+      if (ortb2Data.site.cat && ortb2Data.site.cat.length > 0) {
+        bidRequest.page.categories = ortb2Data.site.cat;
+      }
+      if (ortb2Data.site.keywords) {
+        bidRequest.page.keywords = ortb2Data.site.keywords;
+      }
+      if (ortb2Data.site.content && Object.keys(ortb2Data.site.content).length > 0) {
+        bidRequest.page.content = ortb2Data.site.content;
+      }
+      if (ortb2Data.site.ext && Object.keys(ortb2Data.site.ext).length > 0) {
+        bidRequest.page.ext = ortb2Data.site.ext;
+      }
+    }
+
+    // Merge ORTB2 device data (geo targeting, connection info)
+    if (ortb2Data.device) {
+      if (ortb2Data.device.geo && Object.keys(ortb2Data.device.geo).length > 0) {
+        bidRequest.device.geo = ortb2Data.device.geo;
+      }
+      if (ortb2Data.device.connectiontype) {
+        bidRequest.device.connectiontype = ortb2Data.device.connectiontype;
+      }
+      if (ortb2Data.device.ext && Object.keys(ortb2Data.device.ext).length > 0) {
+        bidRequest.device.ext = ortb2Data.device.ext;
+      }
+    }
+
+    // Merge ORTB2 user data (segments, interests, demographics)
+    if (ortb2Data.user) {
+      bidRequest.user = bidRequest.user || {};
+      if (ortb2Data.user.data && ortb2Data.user.data.length > 0) {
+        bidRequest.user.data = ortb2Data.user.data;
+      }
+      if (ortb2Data.user.ext && Object.keys(ortb2Data.user.ext).length > 0) {
+        bidRequest.user.ext = bidRequest.user.ext || {};
+        for (var key in ortb2Data.user.ext) {
+          if (ortb2Data.user.ext.hasOwnProperty(key)) {
+            bidRequest.user.ext[key] = ortb2Data.user.ext[key];
+          }
+        }
+      }
+    }
+
     // Setup timeout
     var timedOut = false;
     var timeoutId = setTimeout(function() {
@@ -365,6 +413,65 @@
     }
 
     return userIds;
+  };
+
+  /**
+   * Get ORTB2 data from Prebid.js configuration
+   * This collects site, device, and user data for enhanced targeting
+   * @returns {Object} ORTB2 data with site, device, and user properties
+   * @private
+   */
+  catalyst._getORTB2Data = function() {
+    var ortb2 = {
+      site: null,
+      device: null,
+      user: null
+    };
+
+    if (window.pbjs && typeof window.pbjs.getConfig === 'function') {
+      try {
+        // Get ORTB2 site data (content categories, keywords, publisher FPD)
+        var siteData = window.pbjs.getConfig('ortb2.site');
+        if (siteData) {
+          ortb2.site = {
+            cat: siteData.cat || [],           // IAB content categories
+            keywords: siteData.keywords || '', // Page keywords
+            content: siteData.content || {},   // Content metadata
+            ext: siteData.ext || {}            // Publisher first-party data
+          };
+          catalyst.log('Added ORTB2 site data with', ortb2.site.cat.length, 'categories');
+        }
+
+        // Get ORTB2 device data (geo targeting, connection info)
+        var deviceData = window.pbjs.getConfig('ortb2.device');
+        if (deviceData) {
+          ortb2.device = {
+            geo: deviceData.geo || {},         // Geographic targeting data
+            connectiontype: deviceData.connectiontype,
+            ext: deviceData.ext || {}
+          };
+          if (ortb2.device.geo.country) {
+            catalyst.log('Added ORTB2 device data with geo:', ortb2.device.geo.country);
+          }
+        }
+
+        // Get ORTB2 user data (segments, interests, demographics)
+        var userData = window.pbjs.getConfig('ortb2.user');
+        if (userData) {
+          ortb2.user = {
+            data: userData.data || [],         // User segments and interests
+            ext: userData.ext || {}            // User first-party data
+          };
+          if (ortb2.user.data.length > 0) {
+            catalyst.log('Added ORTB2 user data with', ortb2.user.data.length, 'segments');
+          }
+        }
+      } catch (e) {
+        catalyst.log('Failed to get ORTB2 data from Prebid.js:', e);
+      }
+    }
+
+    return ortb2;
   };
 
   /**

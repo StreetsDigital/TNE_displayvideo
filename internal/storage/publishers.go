@@ -317,7 +317,7 @@ func (s *PublisherStore) Delete(ctx context.Context, publisherID string) error {
 	return nil
 }
 
-// GetBidderParams retrieves bidder parameters for a specific bidder
+// GetBidderParams retrieves bidder parameters for a specific bidder (publisher-level only)
 func (s *PublisherStore) GetBidderParams(ctx context.Context, publisherID, bidderCode string) (map[string]interface{}, error) {
 	ctx, cancel := withTimeout(ctx, DefaultDBTimeout)
 	defer cancel()
@@ -358,6 +358,106 @@ func (s *PublisherStore) GetBidderParams(ctx context.Context, publisherID, bidde
 	return map[string]interface{}{
 		"value": rawValue,
 	}, nil
+}
+
+// GetDomainBidderConfig retrieves domain-level bidder configuration
+func (s *PublisherStore) GetDomainBidderConfig(ctx context.Context, publisherID, domain, bidderCode string) (map[string]interface{}, error) {
+	ctx, cancel := withTimeout(ctx, DefaultDBTimeout)
+	defer cancel()
+
+	query := `
+		SELECT params
+		FROM domain_bidder_configs
+		WHERE publisher_id = $1 AND domain = $2 AND bidder_code = $3
+	`
+
+	var paramsJSON []byte
+	err := s.db.QueryRowContext(ctx, query, publisherID, domain, bidderCode).Scan(&paramsJSON)
+
+	if err == sql.ErrNoRows {
+		return nil, nil // No domain-level config
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to query domain bidder config: %w", err)
+	}
+
+	if len(paramsJSON) == 0 {
+		return nil, nil
+	}
+
+	var params map[string]interface{}
+	if err := json.Unmarshal(paramsJSON, &params); err != nil {
+		return nil, fmt.Errorf("failed to parse domain bidder params: %w", err)
+	}
+
+	return params, nil
+}
+
+// GetUnitBidderConfig retrieves unit-level bidder configuration
+func (s *PublisherStore) GetUnitBidderConfig(ctx context.Context, publisherID, domain, adUnitPath, bidderCode string) (map[string]interface{}, error) {
+	ctx, cancel := withTimeout(ctx, DefaultDBTimeout)
+	defer cancel()
+
+	query := `
+		SELECT params
+		FROM unit_bidder_configs
+		WHERE publisher_id = $1 AND domain = $2 AND ad_unit_path = $3 AND bidder_code = $4
+	`
+
+	var paramsJSON []byte
+	err := s.db.QueryRowContext(ctx, query, publisherID, domain, adUnitPath, bidderCode).Scan(&paramsJSON)
+
+	if err == sql.ErrNoRows {
+		return nil, nil // No unit-level config
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to query unit bidder config: %w", err)
+	}
+
+	if len(paramsJSON) == 0 {
+		return nil, nil
+	}
+
+	var params map[string]interface{}
+	if err := json.Unmarshal(paramsJSON, &params); err != nil {
+		return nil, fmt.Errorf("failed to parse unit bidder params: %w", err)
+	}
+
+	return params, nil
+}
+
+// GetBidderConfigHierarchical retrieves bidder configuration with hierarchical fallback
+// Lookup order: Unit-level → Domain-level → Publisher-level → nil
+func (s *PublisherStore) GetBidderConfigHierarchical(ctx context.Context, publisherID, domain, adUnitPath, bidderCode string) (map[string]interface{}, error) {
+	// Try unit-level config first (most specific)
+	if adUnitPath != "" {
+		params, err := s.GetUnitBidderConfig(ctx, publisherID, domain, adUnitPath, bidderCode)
+		if err != nil {
+			return nil, fmt.Errorf("error checking unit-level config: %w", err)
+		}
+		if params != nil {
+			return params, nil
+		}
+	}
+
+	// Try domain-level config second
+	if domain != "" {
+		params, err := s.GetDomainBidderConfig(ctx, publisherID, domain, bidderCode)
+		if err != nil {
+			return nil, fmt.Errorf("error checking domain-level config: %w", err)
+		}
+		if params != nil {
+			return params, nil
+		}
+	}
+
+	// Fall back to publisher-level config
+	params, err := s.GetBidderParams(ctx, publisherID, bidderCode)
+	if err != nil {
+		return nil, fmt.Errorf("error checking publisher-level config: %w", err)
+	}
+
+	return params, nil
 }
 
 // NewDBConnection creates a new database connection

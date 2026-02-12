@@ -12,6 +12,7 @@ import (
 
 	"github.com/thenexusengine/tne_springwire/internal/exchange"
 	"github.com/thenexusengine/tne_springwire/internal/openrtb"
+	"github.com/thenexusengine/tne_springwire/internal/storage"
 	"github.com/thenexusengine/tne_springwire/internal/usersync"
 	"github.com/thenexusengine/tne_springwire/pkg/logger"
 )
@@ -31,8 +32,6 @@ type AdUnitConfig struct {
 	Rubicon    *RubiconParams    `json:"rubicon,omitempty"`
 	Kargo      *KargoParams      `json:"kargo,omitempty"`
 	Sovrn      *SovrnParams      `json:"sovrn,omitempty"`
-	OMS        *OMSParams        `json:"oms,omitempty"`
-	Aniview    *AniviewParams    `json:"aniview,omitempty"`
 	Pubmatic   *PubmaticParams   `json:"pubmatic,omitempty"`
 	Triplelift *TripleliftParams `json:"triplelift,omitempty"`
 }
@@ -52,24 +51,13 @@ type KargoParams struct {
 
 // SovrnParams are Sovrn adapter parameters
 type SovrnParams struct {
-	TagID int `json:"tagid"`
-}
-
-// OMSParams are OMS (Onemobile) adapter parameters
-type OMSParams struct {
-	PublisherID int `json:"publisherId"`
-}
-
-// AniviewParams are Aniview adapter parameters
-type AniviewParams struct {
-	PublisherID string `json:"publisherId"`
-	ChannelID   string `json:"channelId"`
+	TagID string `json:"tagid"` // Must be string per Prebid Server spec
 }
 
 // PubmaticParams are Pubmatic adapter parameters
 type PubmaticParams struct {
-	PublisherID int `json:"publisherId"`
-	AdSlot      int `json:"adSlot"`
+	PublisherID string `json:"publisherId"` // Must be string per Prebid Server spec
+	AdSlot      string `json:"adSlot"`      // Must be string per Prebid Server spec
 }
 
 // TripleliftParams are Triplelift adapter parameters
@@ -79,8 +67,9 @@ type TripleliftParams struct {
 
 // CatalystBidHandler handles MAI Publisher-compatible bid requests
 type CatalystBidHandler struct {
-	exchange *exchange.Exchange
-	mapping  *BidderMapping
+	exchange       *exchange.Exchange
+	mapping        *BidderMapping      // Legacy: static mapping file (fallback)
+	publisherStore *storage.PublisherStore // Dynamic hierarchical config from database
 }
 
 // LoadBidderMapping loads bidder parameter mapping from JSON file
@@ -104,10 +93,11 @@ func LoadBidderMapping(path string) (*BidderMapping, error) {
 }
 
 // NewCatalystBidHandler creates a new Catalyst bid handler
-func NewCatalystBidHandler(ex *exchange.Exchange, mapping *BidderMapping) *CatalystBidHandler {
+func NewCatalystBidHandler(ex *exchange.Exchange, mapping *BidderMapping, publisherStore *storage.PublisherStore) *CatalystBidHandler {
 	return &CatalystBidHandler{
-		exchange: ex,
-		mapping:  mapping,
+		exchange:       ex,
+		mapping:        mapping,
+		publisherStore: publisherStore,
 	}
 }
 
@@ -339,90 +329,81 @@ func (h *CatalystBidHandler) convertToOpenRTB(r *http.Request, maiBid *MAIBidReq
 			TagID: slot.AdUnitPath,
 		}
 
-		// Look up bidder parameters from mapping
-		if slot.AdUnitPath != "" && h.mapping != nil {
-			if adUnitConfig, ok := h.mapping.AdUnits[slot.AdUnitPath]; ok {
-				logger.Log.Debug().
-					Str("ad_unit", slot.AdUnitPath).
-					Msg("Found mapping for ad unit")
+		// Look up bidder parameters using hierarchical config (DB first, then mapping file fallback)
+		if slot.AdUnitPath != "" && maiBid.AccountID != "" {
+			// Extract domain from page context
+			domain := ""
+			if maiBid.Page != nil && maiBid.Page.Domain != "" {
+				domain = maiBid.Page.Domain
+			}
 
-				// Build imp.ext with all configured bidders
-				impExt := make(map[string]interface{})
+			// Build imp.ext with all configured bidders
+			impExt := make(map[string]interface{})
 
-				// Rubicon/Magnite
-				if adUnitConfig.Rubicon != nil {
-					impExt["rubicon"] = map[string]interface{}{
-						"accountId":        adUnitConfig.Rubicon.AccountID,
-						"siteId":           adUnitConfig.Rubicon.SiteID,
-						"zoneId":           adUnitConfig.Rubicon.ZoneID,
-						"bidonmultiformat": adUnitConfig.Rubicon.BidOnMultiFormat,
-					}
-				}
+			// List of bidders to look up
+			bidders := []string{"rubicon", "kargo", "sovrn", "pubmatic", "triplelift"}
 
-				// Kargo
-				if adUnitConfig.Kargo != nil {
-					impExt["kargo"] = map[string]interface{}{
-						"placementId": adUnitConfig.Kargo.PlacementID,
-					}
-				}
+			// For each bidder, use hierarchical config lookup
+			for _, bidderCode := range bidders {
+				var params map[string]interface{}
+				var err error
 
-				// Sovrn
-				if adUnitConfig.Sovrn != nil {
-					impExt["sovrn"] = map[string]interface{}{
-						"tagid": adUnitConfig.Sovrn.TagID,
-					}
-				}
-
-				// OMS (Onemobile) - uses "onetag" in OpenRTB
-				if adUnitConfig.OMS != nil {
-					impExt["onetag"] = map[string]interface{}{
-						"publisherId": adUnitConfig.OMS.PublisherID,
-					}
-				}
-
-				// Aniview
-				if adUnitConfig.Aniview != nil {
-					impExt["aniview"] = map[string]interface{}{
-						"publisherId": adUnitConfig.Aniview.PublisherID,
-						"channelId":   adUnitConfig.Aniview.ChannelID,
-					}
-				}
-
-				// Pubmatic
-				if adUnitConfig.Pubmatic != nil {
-					impExt["pubmatic"] = map[string]interface{}{
-						"publisherId": adUnitConfig.Pubmatic.PublisherID,
-						"adSlot":      adUnitConfig.Pubmatic.AdSlot,
-					}
-				}
-
-				// Triplelift
-				if adUnitConfig.Triplelift != nil {
-					impExt["triplelift"] = map[string]interface{}{
-						"inventoryCode": adUnitConfig.Triplelift.InventoryCode,
-					}
-				}
-
-				// Marshal and attach to impression
-				if len(impExt) > 0 {
-					extJSON, err := json.Marshal(impExt)
-					if err == nil {
-						imp.Ext = extJSON
-						logger.Log.Info().
-							Str("ad_unit", slot.AdUnitPath).
-							Int("bidders", len(impExt)).
-							Msg("Injected bidder parameters")
-					} else {
-						logger.Log.Error().
+				// Try database hierarchical lookup first
+				if h.publisherStore != nil {
+					params, err = h.publisherStore.GetBidderConfigHierarchical(
+						r.Context(),
+						maiBid.AccountID,
+						domain,
+						slot.AdUnitPath,
+						bidderCode,
+					)
+					if err != nil {
+						logger.Log.Warn().
 							Err(err).
+							Str("publisher", maiBid.AccountID).
+							Str("domain", domain).
 							Str("ad_unit", slot.AdUnitPath).
-							Msg("Failed to marshal bidder parameters")
+							Str("bidder", bidderCode).
+							Msg("Error looking up hierarchical config")
 					}
+				}
+
+				// If no DB config found, fall back to mapping file
+				if params == nil && h.mapping != nil {
+					if adUnitConfig, ok := h.mapping.AdUnits[slot.AdUnitPath]; ok {
+						params = h.extractBidderParamsFromMapping(bidderCode, &adUnitConfig)
+					}
+				}
+
+				// Add params to impExt if found
+				if params != nil && len(params) > 0 {
+					impExt[bidderCode] = params
+				}
+			}
+
+			// Marshal and attach to impression
+			if len(impExt) > 0 {
+				extJSON, err := json.Marshal(impExt)
+				if err == nil {
+					imp.Ext = extJSON
+					logger.Log.Info().
+						Str("publisher", maiBid.AccountID).
+						Str("domain", domain).
+						Str("ad_unit", slot.AdUnitPath).
+						Int("bidders", len(impExt)).
+						Msg("Injected bidder parameters using hierarchical config")
+				} else {
+					logger.Log.Error().
+						Err(err).
+						Str("ad_unit", slot.AdUnitPath).
+						Msg("Failed to marshal bidder parameters")
 				}
 			} else {
 				logger.Log.Warn().
+					Str("publisher", maiBid.AccountID).
+					Str("domain", domain).
 					Str("ad_unit", slot.AdUnitPath).
-					Msg("No mapping found for ad unit")
+					Msg("No bidder configuration found (DB or mapping file)")
 			}
 		}
 
@@ -494,7 +475,7 @@ func (h *CatalystBidHandler) convertToOpenRTB(r *http.Request, maiBid *MAIBidReq
 
 	// 2. From HTTP cookie as fallback (server-side cookie sync)
 	cookieSync := usersync.ParseCookie(r)
-	bidders := []string{"rubicon", "kargo", "sovrn", "pubmatic", "triplelift", "appnexus", "oms"}
+	bidders := []string{"rubicon", "kargo", "sovrn", "pubmatic", "triplelift", "appnexus"}
 	for _, bidder := range bidders {
 		if uid := cookieSync.GetUID(bidder); uid != "" {
 			if _, exists := userIDs[bidder]; !exists {
@@ -520,7 +501,6 @@ func (h *CatalystBidHandler) convertToOpenRTB(r *http.Request, maiBid *MAIBidReq
 				"pubmatic":    "pubmatic.com",
 				"triplelift":  "3lift.com",
 				"appnexus":    "adnxs.com",
-				"oms":         "onemobile.com",
 			}
 
 			for bidder, uid := range userIDs {
@@ -664,6 +644,50 @@ func (h *CatalystBidHandler) writeErrorResponse(w http.ResponseWriter, message s
 	json.NewEncoder(w).Encode(map[string]string{
 		"error": message,
 	})
+}
+
+// extractBidderParamsFromMapping extracts bidder-specific params from legacy mapping file
+// Note: This maintains backward compatibility with integer values in the mapping file
+func (h *CatalystBidHandler) extractBidderParamsFromMapping(bidderCode string, adUnitConfig *AdUnitConfig) map[string]interface{} {
+	switch bidderCode {
+	case "rubicon":
+		if adUnitConfig.Rubicon != nil {
+			return map[string]interface{}{
+				"accountId":        adUnitConfig.Rubicon.AccountID,        // int (correct)
+				"siteId":           adUnitConfig.Rubicon.SiteID,           // int (correct)
+				"zoneId":           adUnitConfig.Rubicon.ZoneID,           // int (correct)
+				"bidonmultiformat": adUnitConfig.Rubicon.BidOnMultiFormat, // bool (correct)
+			}
+		}
+	case "kargo":
+		if adUnitConfig.Kargo != nil {
+			return map[string]interface{}{
+				"placementId": adUnitConfig.Kargo.PlacementID, // string (correct)
+			}
+		}
+	case "sovrn":
+		if adUnitConfig.Sovrn != nil {
+			// Note: tagid must be string per Prebid Server spec
+			return map[string]interface{}{
+				"tagid": adUnitConfig.Sovrn.TagID, // string (will be converted from mapping)
+			}
+		}
+	case "pubmatic":
+		if adUnitConfig.Pubmatic != nil {
+			// Note: publisherId and adSlot must be strings per Prebid Server spec
+			return map[string]interface{}{
+				"publisherId": adUnitConfig.Pubmatic.PublisherID, // string (will be converted from mapping)
+				"adSlot":      adUnitConfig.Pubmatic.AdSlot,      // string (will be converted from mapping)
+			}
+		}
+	case "triplelift":
+		if adUnitConfig.Triplelift != nil {
+			return map[string]interface{}{
+				"inventoryCode": adUnitConfig.Triplelift.InventoryCode, // string (correct)
+			}
+		}
+	}
+	return nil
 }
 
 // getBidderKeys extracts keys from user IDs map for logging
