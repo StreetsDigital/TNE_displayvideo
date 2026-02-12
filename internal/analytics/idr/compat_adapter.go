@@ -114,13 +114,7 @@ func (a *CompatAdapter) Shutdown() error {
 	return a.recorder.Close()
 }
 
-func extractMediaType(imps []analytics.Impression) string {
-	if len(imps) == 0 || len(imps[0].MediaTypes) == 0 {
-		return "banner"
-	}
-	return imps[0].MediaTypes[0]
-}
-
+// extractAdSize is a local helper for compat adapter
 func extractAdSize(imps []analytics.Impression) string {
 	if len(imps) == 0 || len(imps[0].Sizes) == 0 {
 		return ""
