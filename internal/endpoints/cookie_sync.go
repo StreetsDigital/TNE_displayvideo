@@ -304,11 +304,7 @@ func (h *CookieSyncHandler) getBiddersToSync(req CookieSyncRequest, cookie *user
 
 // getCookieDomain extracts the domain for cookies
 func (h *CookieSyncHandler) getCookieDomain(r *http.Request) string {
-	host := r.Host
-	if idx := strings.Index(host, ":"); idx != -1 {
-		host = host[:idx]
-	}
-	return host
+	return GetCookieDomain(r.Host)
 }
 
 // respondJSON writes a JSON response

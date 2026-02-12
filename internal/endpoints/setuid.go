@@ -92,6 +92,12 @@ func (h *SetUIDHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// Set the updated cookie
 	domain := h.getCookieDomain(r)
+	logger.Log.Debug().
+		Str("host", r.Host).
+		Str("domain", domain).
+		Str("bidder", bidder).
+		Msg("Setting cookie domain")
+
 	if httpCookie, err := cookie.ToHTTPCookie(domain); err == nil {
 		http.SetCookie(w, httpCookie)
 	} else {
@@ -103,41 +109,8 @@ func (h *SetUIDHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 // getCookieDomain extracts the domain for cookies
-// Returns a wildcard domain (e.g., ".thenexusengine.com") for cross-subdomain access
 func (h *SetUIDHandler) getCookieDomain(r *http.Request) string {
-	host := r.Host
-	if idx := strings.Index(host, ":"); idx != -1 {
-		host = host[:idx]
-	}
-
-	// For localhost/IP addresses, return as-is
-	if host == "localhost" || strings.Contains(host, "127.0.0.1") || strings.Contains(host, "::1") {
-		return host
-	}
-
-	// Extract root domain for cookie
-	// For "ads.thenexusengine.com" -> ".thenexusengine.com"
-	// For "www.example.co.uk" -> ".example.co.uk"
-	parts := strings.Split(host, ".")
-
-	// Handle special multi-level TLDs (co.uk, com.au, etc.)
-	if len(parts) >= 3 {
-		// Check if second-to-last part is a known second-level domain
-		secondLevel := parts[len(parts)-2]
-		if secondLevel == "co" || secondLevel == "com" || secondLevel == "gov" || secondLevel == "org" {
-			// Return last 3 parts: .example.co.uk
-			if len(parts) >= 3 {
-				return "." + parts[len(parts)-3] + "." + parts[len(parts)-2] + "." + parts[len(parts)-1]
-			}
-		}
-	}
-
-	// Default: return last 2 parts with leading dot
-	if len(parts) >= 2 {
-		return "." + parts[len(parts)-2] + "." + parts[len(parts)-1]
-	}
-
-	return host
+	return GetCookieDomain(r.Host)
 }
 
 // respondWithPixel returns a 1x1 transparent GIF
@@ -182,10 +155,8 @@ func (h *OptOutHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Set opt-out
 	cookie.SetOptOut(true)
 
-	// Set the updated cookie (reuse the same domain logic)
-	handler := &SetUIDHandler{}
-	domain := handler.getCookieDomain(r)
-
+	// Set the updated cookie
+	domain := GetCookieDomain(r.Host)
 	if httpCookie, err := cookie.ToHTTPCookie(domain); err == nil {
 		http.SetCookie(w, httpCookie)
 	}
