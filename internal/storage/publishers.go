@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/thenexusengine/tne_springwire/pkg/logger"
 	_ "github.com/lib/pq" // PostgreSQL driver
 )
 
@@ -429,35 +430,58 @@ func (s *PublisherStore) GetUnitBidderConfig(ctx context.Context, publisherID, d
 // GetBidderConfigHierarchical retrieves bidder configuration with hierarchical fallback
 // Lookup order: Unit-level → Domain-level → Publisher-level → nil
 func (s *PublisherStore) GetBidderConfigHierarchical(ctx context.Context, publisherID, domain, adUnitPath, bidderCode string) (map[string]interface{}, error) {
+	log := logger.Log.With().
+		Str("publisher", publisherID).
+		Str("domain", domain).
+		Str("ad_unit", adUnitPath).
+		Str("bidder", bidderCode).
+		Logger()
+
 	// Try unit-level config first (most specific)
 	if adUnitPath != "" {
+		log.Debug().Msg("🔍 Checking unit-level config...")
 		params, err := s.GetUnitBidderConfig(ctx, publisherID, domain, adUnitPath, bidderCode)
 		if err != nil {
+			log.Error().Err(err).Msg("❌ Error checking unit-level config")
 			return nil, fmt.Errorf("error checking unit-level config: %w", err)
 		}
 		if params != nil {
+			log.Info().Interface("params", params).Msg("✓ Found unit-level config")
 			return params, nil
 		}
+		log.Debug().Msg("⚠️  No unit-level config found")
 	}
 
 	// Try domain-level config second
 	if domain != "" {
+		log.Debug().Msg("🔍 Checking domain-level config...")
 		params, err := s.GetDomainBidderConfig(ctx, publisherID, domain, bidderCode)
 		if err != nil {
+			log.Error().Err(err).Msg("❌ Error checking domain-level config")
 			return nil, fmt.Errorf("error checking domain-level config: %w", err)
 		}
 		if params != nil {
+			log.Info().Interface("params", params).Msg("✓ Found domain-level config")
 			return params, nil
 		}
+		log.Debug().Msg("⚠️  No domain-level config found")
 	}
 
 	// Fall back to publisher-level config
+	log.Debug().Msg("🔍 Checking publisher-level config...")
 	params, err := s.GetBidderParams(ctx, publisherID, bidderCode)
 	if err != nil {
+		log.Error().Err(err).Msg("❌ Error checking publisher-level config")
 		return nil, fmt.Errorf("error checking publisher-level config: %w", err)
 	}
 
-	return params, nil
+	if params != nil {
+		log.Info().Interface("params", params).Msg("✓ Found publisher-level config")
+		return params, nil
+	}
+
+	log.Warn().Msg("❌ No config found at any level (unit/domain/publisher)")
+	return nil, nil
 }
 
 // NewDBConnection creates a new database connection

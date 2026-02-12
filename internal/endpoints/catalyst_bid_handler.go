@@ -188,6 +188,10 @@ func (h *CatalystBidHandler) HandleBidRequest(w http.ResponseWriter, r *http.Req
 
 	// Only accept POST
 	if r.Method != "POST" {
+		log.Error().
+			Str("method", r.Method).
+			Str("path", r.URL.Path).
+			Msg("Method not allowed - expected POST")
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
@@ -196,27 +200,52 @@ func (h *CatalystBidHandler) HandleBidRequest(w http.ResponseWriter, r *http.Req
 	var maiBidReq MAIBidRequest
 	bodyBytes, err := io.ReadAll(r.Body)
 	if err != nil {
-		log.Error().Err(err).Msg("Failed to read MAI bid request body")
+		log.Error().
+			Err(err).
+			Str("remote_addr", r.RemoteAddr).
+			Str("user_agent", r.Header.Get("User-Agent")).
+			Msg("Failed to read MAI bid request body")
 		h.writeErrorResponse(w, "Invalid request format", http.StatusBadRequest)
 		return
 	}
 
-	// Log incoming request body for debugging
-	requestPreview := string(bodyBytes)
-	if len(requestPreview) > 2000 {
-		requestPreview = requestPreview[:2000] + "..."
+	// DEBUG: Full request dump if enabled
+	debugDumpRequests := os.Getenv("DEBUG_DUMP_REQUESTS") == "true"
+	if debugDumpRequests {
+		log.Debug().
+			Str("method", r.Method).
+			Str("path", r.URL.Path).
+			Str("remote_addr", r.RemoteAddr).
+			Str("user_agent", r.Header.Get("User-Agent")).
+			Str("content_type", r.Header.Get("Content-Type")).
+			Str("request_body", string(bodyBytes)).
+			Msg("🔍 DEBUG_DUMP_REQUESTS: Full incoming request")
+	} else {
+		// Log preview for normal debug mode
+		requestPreview := string(bodyBytes)
+		if len(requestPreview) > 2000 {
+			requestPreview = requestPreview[:2000] + "..."
+		}
+		log.Debug().Str("request_body_preview", requestPreview).Msg("Received MAI bid request")
 	}
-	log.Debug().Str("request_body", requestPreview).Msg("Received MAI bid request")
 
 	if err := json.Unmarshal(bodyBytes, &maiBidReq); err != nil {
-		log.Error().Err(err).Msg("Failed to parse MAI bid request")
+		log.Error().
+			Err(err).
+			Str("request_body", string(bodyBytes)).
+			Msg("Failed to parse MAI bid request - invalid JSON")
 		h.writeErrorResponse(w, "Invalid request format", http.StatusBadRequest)
 		return
 	}
 
 	// Validate request
 	if err := h.validateMAIBidRequest(&maiBidReq); err != nil {
-		log.Error().Err(err).Msg("Invalid MAI bid request")
+		log.Error().
+			Err(err).
+			Str("account_id", maiBidReq.AccountID).
+			Int("slots_count", len(maiBidReq.Slots)).
+			Interface("request", maiBidReq).
+			Msg("❌ Invalid MAI bid request - validation failed")
 		h.writeErrorResponse(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -224,7 +253,11 @@ func (h *CatalystBidHandler) HandleBidRequest(w http.ResponseWriter, r *http.Req
 	// Convert to OpenRTB
 	ortbReq, impToSlot, err := h.convertToOpenRTB(r, &maiBidReq)
 	if err != nil {
-		log.Error().Err(err).Msg("Failed to convert to OpenRTB")
+		log.Error().
+			Err(err).
+			Str("account_id", maiBidReq.AccountID).
+			Int("slots_count", len(maiBidReq.Slots)).
+			Msg("❌ Failed to convert to OpenRTB")
 		h.writeErrorResponse(w, "Internal error", http.StatusInternalServerError)
 		return
 	}
@@ -240,7 +273,13 @@ func (h *CatalystBidHandler) HandleBidRequest(w http.ResponseWriter, r *http.Req
 
 	auctionResp, err := h.exchange.RunAuction(ctx, auctionReq)
 	if err != nil {
-		log.Error().Err(err).Msg("Auction failed")
+		log.Error().
+			Err(err).
+			Str("account_id", maiBidReq.AccountID).
+			Int("slots", len(maiBidReq.Slots)).
+			Int("timeout_ms", int(time.Since(startTime).Milliseconds())).
+			Str("error_type", fmt.Sprintf("%T", err)).
+			Msg("❌ Auction failed - returning empty bids")
 		// Return empty bids on error (MAI Publisher requirement)
 		h.writeMAIResponse(w, &MAIBidResponse{
 			Bids:         []MAIBid{},
@@ -253,13 +292,22 @@ func (h *CatalystBidHandler) HandleBidRequest(w http.ResponseWriter, r *http.Req
 	maiResp := h.convertToMAIResponse(auctionResp, impToSlot)
 	maiResp.ResponseTime = int(time.Since(startTime).Milliseconds())
 
-	// Log the full response payload for debugging
-	if respJSON, err := json.Marshal(maiResp); err == nil {
+	// DEBUG: Full response dump if enabled
+	debugDumpResponses := os.Getenv("DEBUG_DUMP_RESPONSES") == "true"
+	if debugDumpResponses {
+		if respJSON, err := json.Marshal(maiResp); err == nil {
+			log.Debug().
+				Str("response_body", string(respJSON)).
+				Int("bids", len(maiResp.Bids)).
+				Int("response_time_ms", maiResp.ResponseTime).
+				Msg("🔍 DEBUG_DUMP_RESPONSES: Full outgoing response")
+		}
+	} else {
+		// Normal debug logging
 		log.Debug().
-			Str("full_response", string(respJSON)).
 			Int("bids", len(maiResp.Bids)).
 			Int("response_time_ms", maiResp.ResponseTime).
-			Msg("Catalyst full response payload")
+			Msg("Catalyst response ready")
 	}
 
 	// Write response
@@ -270,7 +318,7 @@ func (h *CatalystBidHandler) HandleBidRequest(w http.ResponseWriter, r *http.Req
 		Int("slots", len(maiBidReq.Slots)).
 		Int("bids", len(maiResp.Bids)).
 		Int("response_time_ms", maiResp.ResponseTime).
-		Msg("Catalyst bid request completed")
+		Msg("✓ Catalyst bid request completed")
 }
 
 // validateMAIBidRequest validates the MAI bid request
@@ -370,13 +418,23 @@ func (h *CatalystBidHandler) convertToOpenRTB(r *http.Request, maiBid *MAIBidReq
 					bidderCode,
 				)
 				if err != nil {
-					logger.Log.Warn().
+					logger.Log.Error().
 						Err(err).
 						Str("publisher", maiBid.AccountID).
 						Str("domain", domain).
 						Str("ad_unit", slot.AdUnitPath).
 						Str("bidder", bidderCode).
-						Msg("Error looking up hierarchical config")
+						Str("error_type", fmt.Sprintf("%T", err)).
+						Str("error_msg", err.Error()).
+						Msg("❌ Database error looking up hierarchical config")
+				} else if params != nil {
+					logger.Log.Debug().
+						Str("publisher", maiBid.AccountID).
+						Str("domain", domain).
+						Str("ad_unit", slot.AdUnitPath).
+						Str("bidder", bidderCode).
+						Interface("params", params).
+						Msg("✓ Found bidder config in database")
 				}
 			}
 
@@ -391,10 +449,12 @@ func (h *CatalystBidHandler) convertToOpenRTB(r *http.Request, maiBid *MAIBidReq
 			if params != nil && len(params) > 0 {
 				impExt[bidderCode] = params
 			} else {
-				logger.Log.Debug().
+				logger.Log.Warn().
 					Str("bidder", bidderCode).
+					Str("publisher", maiBid.AccountID).
+					Str("domain", domain).
 					Str("ad_unit", slot.AdUnitPath).
-					Msg("No configuration found for bidder")
+					Msg("⚠️  No configuration found for bidder")
 			}
 		}
 
@@ -407,20 +467,26 @@ func (h *CatalystBidHandler) convertToOpenRTB(r *http.Request, maiBid *MAIBidReq
 					Str("publisher", maiBid.AccountID).
 					Str("domain", domain).
 					Str("ad_unit", slot.AdUnitPath).
-					Int("bidders", len(impExt)).
-					Msg("Injected bidder parameters using hierarchical config")
+					Int("bidders_configured", len(impExt)).
+					Interface("bidder_names", getBidderNames(impExt)).
+					Interface("full_config", impExt).
+					Msg("✓ Injected bidder parameters using hierarchical config")
 			} else {
 				logger.Log.Error().
 					Err(err).
+					Str("publisher", maiBid.AccountID).
+					Str("domain", domain).
 					Str("ad_unit", slot.AdUnitPath).
-					Msg("Failed to marshal bidder parameters")
+					Interface("impExt", impExt).
+					Msg("❌ Failed to marshal bidder parameters")
 			}
 		} else {
-			logger.Log.Warn().
+			logger.Log.Error().
 				Str("publisher", maiBid.AccountID).
 				Str("domain", domain).
 				Str("ad_unit", slot.AdUnitPath).
-				Msg("No bidder configuration found (DB or mapping file)")
+				Str("div_id", slot.DivID).
+				Msg("❌ ZERO bidder configuration found - no bids will be returned for this slot!")
 		}
 	}
 
@@ -711,6 +777,15 @@ func (h *CatalystBidHandler) extractBidderParamsFromMapping(bidderCode string, a
 func getBidderKeys(userIDs map[string]string) []string {
 	keys := make([]string, 0, len(userIDs))
 	for k := range userIDs {
+		keys = append(keys, k)
+	}
+	return keys
+}
+
+// getBidderNames extracts keys from bidder config map for logging
+func getBidderNames(impExt map[string]interface{}) []string {
+	keys := make([]string, 0, len(impExt))
+	for k := range impExt {
 		keys = append(keys, k)
 	}
 	return keys
