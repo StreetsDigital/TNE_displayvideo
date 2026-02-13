@@ -2,6 +2,8 @@
 package pubmatic
 
 import (
+	"bytes"
+	"compress/gzip"
 	"encoding/json"
 	"fmt"
 	"math"
@@ -15,7 +17,7 @@ import (
 )
 
 const (
-	defaultEndpoint = "https://hbopenbid.pubmatic.com/translator"
+	defaultEndpoint = "https://hbopenbid.pubmatic.com/translator?source=prebid-server"
 	bidderPubMatic  = "pubmatic"
 )
 
@@ -139,20 +141,32 @@ func (a *Adapter) MakeRequests(request *openrtb.BidRequest, extraInfo *adapters.
 	}
 
 	// Marshal final request
-	requestBody, err := json.Marshal(request)
+	requestJSON, err := json.Marshal(request)
 	if err != nil {
 		return nil, []error{fmt.Errorf("failed to marshal request: %w", err)}
 	}
 
+	// Compress request body with gzip
+	var requestBody bytes.Buffer
+	gzipWriter := gzip.NewWriter(&requestBody)
+	if _, err := gzipWriter.Write(requestJSON); err != nil {
+		return nil, []error{fmt.Errorf("failed to gzip request: %w", err)}
+	}
+	if err := gzipWriter.Close(); err != nil {
+		return nil, []error{fmt.Errorf("failed to close gzip writer: %w", err)}
+	}
+
 	headers := http.Header{}
 	headers.Set("Content-Type", "application/json;charset=utf-8")
+	headers.Set("Content-Encoding", "gzip")
 	headers.Set("Accept", "application/json")
+	headers.Set("Accept-Encoding", "gzip")
 
 	return []*adapters.RequestData{
 		{
 			Method:  "POST",
 			URI:     a.endpoint,
-			Body:    requestBody,
+			Body:    requestBody.Bytes(),
 			Headers: headers,
 		},
 	}, errs
