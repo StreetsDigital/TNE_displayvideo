@@ -24,8 +24,8 @@ type Publisher struct {
 	Version        int                    `json:"version"`
 	CreatedAt      time.Time              `json:"created_at"`
 	UpdatedAt      time.Time              `json:"updated_at"`
-	Notes          string                 `json:"notes,omitempty"`
-	ContactEmail   string                 `json:"contact_email,omitempty"`
+	Notes          sql.NullString         `json:"notes,omitempty"`
+	ContactEmail   sql.NullString         `json:"contact_email,omitempty"`
 }
 
 // GetAllowedDomains returns the allowed domains string (for middleware interface)
@@ -585,34 +585,28 @@ func (s *PublisherStore) GetAllBidderConfigsHierarchical(ctx context.Context, pu
 
 	// Get publisher-level configs for any remaining bidders
 	if len(remaining) > 0 {
-		remainingBidders := make([]string, 0, len(remaining))
-		for b := range remaining {
-			remainingBidders = append(remainingBidders, b)
-		}
+		// Get the entire bidder_params JSONB and filter in Go
+		query := `SELECT bidder_params FROM publishers WHERE publisher_id = $1 AND status = 'active'`
 
-		query := `SELECT bidder_code, params FROM publishers 
-		          WHERE publisher_id = $1 AND bidder_code = ANY($2)`
-		
-		rows, err := s.db.QueryContext(ctx, query, publisherID, pq.Array(remainingBidders))
-		if err != nil {
+		var bidderParamsJSON []byte
+		err := s.db.QueryRowContext(ctx, query, publisherID).Scan(&bidderParamsJSON)
+		if err != nil && err != sql.ErrNoRows {
 			return nil, fmt.Errorf("error querying publisher-level configs: %w", err)
 		}
-		defer rows.Close()
 
-		for rows.Next() {
-			var bidderCode string
-			var paramsJSON []byte
-			if err := rows.Scan(&bidderCode, &paramsJSON); err != nil {
-				return nil, fmt.Errorf("error scanning publisher-level config: %w", err)
+		if len(bidderParamsJSON) > 0 {
+			var allBidderParams map[string]map[string]interface{}
+			if err := json.Unmarshal(bidderParamsJSON, &allBidderParams); err != nil {
+				return nil, fmt.Errorf("error unmarshaling publisher bidder_params: %w", err)
 			}
 
-			var params map[string]interface{}
-			if err := json.Unmarshal(paramsJSON, &params); err != nil {
-				return nil, fmt.Errorf("error unmarshaling publisher-level params: %w", err)
+			// Extract only the requested bidders
+			for bidderCode := range remaining {
+				if params, exists := allBidderParams[bidderCode]; exists {
+					result[bidderCode] = params
+					delete(remaining, bidderCode)
+				}
 			}
-
-			result[bidderCode] = params
-			delete(remaining, bidderCode)
 		}
 	}
 
