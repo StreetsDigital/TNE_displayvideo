@@ -122,10 +122,12 @@ func (a *Adapter) MakeRequests(request *openrtb.BidRequest, extraInfo *adapters.
 				continue
 			}
 
-			// Set Rubicon publisher extension
-			if siteCopy.Publisher == nil {
-				siteCopy.Publisher = &openrtb.Publisher{}
+			// Create a deep copy of Publisher to avoid modifying the original
+			var pubCopy openrtb.Publisher
+			if siteCopy.Publisher != nil {
+				pubCopy = *siteCopy.Publisher
 			}
+			siteCopy.Publisher = &pubCopy
 
 			// CRITICAL: Set publisher.id to Rubicon's account ID
 			// Rubicon checks this field BEFORE ext.rp.account_id
