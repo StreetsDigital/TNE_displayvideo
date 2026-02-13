@@ -368,6 +368,7 @@ func (h *CatalystBidHandler) convertToOpenRTB(r *http.Request, maiBid *MAIBidReq
 			}
 		}
 
+		// We'll set TagID after resolving adUnitPath below
 		imp := openrtb.Imp{
 			ID: impID,
 			Banner: &openrtb.Banner{
@@ -375,7 +376,6 @@ func (h *CatalystBidHandler) convertToOpenRTB(r *http.Request, maiBid *MAIBidReq
 				H:      slot.Sizes[0][1],
 				Format: formats,
 			},
-			TagID: slot.AdUnitPath,
 		}
 
 	// Look up bidder parameters using hierarchical config (DB first, then mapping file fallback)
@@ -391,14 +391,29 @@ func (h *CatalystBidHandler) convertToOpenRTB(r *http.Request, maiBid *MAIBidReq
 			domain = maiBid.Page.Domain
 		}
 
-		// Warn if adUnitPath is missing
-		if slot.AdUnitPath == "" {
-			logger.Log.Warn().
-				Str("publisher", maiBid.AccountID).
-				Str("domain", domain).
-				Str("div_id", slot.DivID).
-				Msg("Missing adUnitPath - falling back to publisher-level config only")
+		// If adUnitPath is missing, try to resolve it from divId mapping
+		adUnitPath := adUnitPath
+		if adUnitPath == "" && h.publisherStore != nil {
+			resolvedPath, err := h.publisherStore.GetAdUnitPathFromDivID(r.Context(), maiBid.AccountID, domain, slot.DivID)
+			if err == nil && resolvedPath != "" {
+				adUnitPath = resolvedPath
+				logger.Log.Info().
+					Str("publisher", maiBid.AccountID).
+					Str("domain", domain).
+					Str("div_id", slot.DivID).
+					Str("resolved_path", adUnitPath).
+					Msg("✓ Resolved adUnitPath from divId mapping")
+			} else {
+				logger.Log.Warn().
+					Str("publisher", maiBid.AccountID).
+					Str("domain", domain).
+					Str("div_id", slot.DivID).
+					Msg("⚠️  Missing adUnitPath and no divId mapping found - falling back to publisher-level config only")
+			}
 		}
+
+		// Set TagID with resolved adUnitPath
+		imp.TagID = adUnitPath
 
 		// List of bidders to look up
 		bidders := []string{"rubicon", "kargo", "sovrn", "pubmatic", "triplelift"}
@@ -411,7 +426,7 @@ func (h *CatalystBidHandler) convertToOpenRTB(r *http.Request, maiBid *MAIBidReq
 				r.Context(),
 				maiBid.AccountID,
 				domain,
-				slot.AdUnitPath, // May be empty - hierarchical lookup handles this
+				adUnitPath, // Resolved from adUnitPath or divId mapping
 				bidders,
 			)
 			if err != nil {
@@ -419,14 +434,14 @@ func (h *CatalystBidHandler) convertToOpenRTB(r *http.Request, maiBid *MAIBidReq
 					Err(err).
 					Str("publisher", maiBid.AccountID).
 					Str("domain", domain).
-					Str("ad_unit", slot.AdUnitPath).
+					Str("ad_unit", adUnitPath).
 					Str("error_type", fmt.Sprintf("%T", err)).
 					Str("error_msg", err.Error()).
 					Msg("❌ Database error looking up bidder configs")
 				allConfigs = make(map[string]map[string]interface{})
 			} else {
 				logger.Log.Info().
-					Str("ad_unit", slot.AdUnitPath).
+					Str("ad_unit", adUnitPath).
 					Strs("bidder_names", getConfiguredBidders(allConfigs)).
 					Int("bidders_configured", len(allConfigs)).
 					Str("publisher", maiBid.AccountID).
@@ -443,8 +458,8 @@ func (h *CatalystBidHandler) convertToOpenRTB(r *http.Request, maiBid *MAIBidReq
 			params := allConfigs[bidderCode]
 
 			// If no DB config found, fall back to mapping file (only if we have adUnitPath)
-			if params == nil && h.mapping != nil && slot.AdUnitPath != "" {
-				if adUnitConfig, ok := h.mapping.AdUnits[slot.AdUnitPath]; ok {
+			if params == nil && h.mapping != nil && adUnitPath != "" {
+				if adUnitConfig, ok := h.mapping.AdUnits[adUnitPath]; ok {
 					params = h.extractBidderParamsFromMapping(bidderCode, &adUnitConfig)
 				}
 			}
@@ -457,7 +472,7 @@ func (h *CatalystBidHandler) convertToOpenRTB(r *http.Request, maiBid *MAIBidReq
 					Str("bidder", bidderCode).
 					Str("publisher", maiBid.AccountID).
 					Str("domain", domain).
-					Str("ad_unit", slot.AdUnitPath).
+					Str("ad_unit", adUnitPath).
 					Msg("⚠️  No configuration found for bidder")
 			}
 		}
@@ -470,7 +485,7 @@ func (h *CatalystBidHandler) convertToOpenRTB(r *http.Request, maiBid *MAIBidReq
 				logger.Log.Info().
 					Str("publisher", maiBid.AccountID).
 					Str("domain", domain).
-					Str("ad_unit", slot.AdUnitPath).
+					Str("ad_unit", adUnitPath).
 					Int("bidders_configured", len(impExt)).
 					Interface("bidder_names", getBidderNames(impExt)).
 					Interface("full_config", impExt).
@@ -480,7 +495,7 @@ func (h *CatalystBidHandler) convertToOpenRTB(r *http.Request, maiBid *MAIBidReq
 					Err(err).
 					Str("publisher", maiBid.AccountID).
 					Str("domain", domain).
-					Str("ad_unit", slot.AdUnitPath).
+					Str("ad_unit", adUnitPath).
 					Interface("impExt", impExt).
 					Msg("❌ Failed to marshal bidder parameters")
 			}
@@ -488,7 +503,7 @@ func (h *CatalystBidHandler) convertToOpenRTB(r *http.Request, maiBid *MAIBidReq
 			logger.Log.Error().
 				Str("publisher", maiBid.AccountID).
 				Str("domain", domain).
-				Str("ad_unit", slot.AdUnitPath).
+				Str("ad_unit", adUnitPath).
 				Str("div_id", slot.DivID).
 				Msg("❌ ZERO bidder configuration found - no bids will be returned for this slot!")
 		}

@@ -618,3 +618,32 @@ func (s *PublisherStore) GetAllBidderConfigsHierarchical(ctx context.Context, pu
 
 	return result, nil
 }
+
+// GetAdUnitPathFromDivID looks up the ad unit path from a div ID mapping
+// This allows the server to resolve ad unit paths when the SDK only sends div IDs
+func (s *PublisherStore) GetAdUnitPathFromDivID(ctx context.Context, publisherID, domain, divID string) (string, error) {
+	if s.db == nil {
+		return "", fmt.Errorf("database not available")
+	}
+
+	var adUnitPath string
+	query := `
+		SELECT ad_unit_path
+		FROM slot_mappings
+		WHERE publisher_id = $1
+		  AND domain = $2
+		  AND div_id = $3
+		LIMIT 1
+	`
+
+	err := s.db.QueryRowContext(ctx, query, publisherID, domain, divID).Scan(&adUnitPath)
+	if err == sql.ErrNoRows {
+		// Not found - return empty string (not an error, just no mapping exists)
+		return "", nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("error querying slot mapping: %w", err)
+	}
+
+	return adUnitPath, nil
+}
