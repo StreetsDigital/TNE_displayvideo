@@ -2,6 +2,8 @@
 package kargo
 
 import (
+	"bytes"
+	"compress/gzip"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -28,26 +30,38 @@ func New(endpoint string) *Adapter {
 	return &Adapter{endpoint: endpoint}
 }
 
-// MakeRequests builds HTTP requests for Kargo
+// MakeRequests builds HTTP requests for Kargo with GZIP compression
 func (a *Adapter) MakeRequests(request *openrtb.BidRequest, extraInfo *adapters.ExtraRequestInfo) ([]*adapters.RequestData, []error) {
 	requestBody, err := json.Marshal(request)
 	if err != nil {
 		return nil, []error{fmt.Errorf("failed to marshal request: %w", err)}
 	}
 
+	// Compress request body with GZIP
+	var compressedBody bytes.Buffer
+	gzipWriter := gzip.NewWriter(&compressedBody)
+	if _, err := gzipWriter.Write(requestBody); err != nil {
+		return nil, []error{fmt.Errorf("failed to gzip request body: %w", err)}
+	}
+	if err := gzipWriter.Close(); err != nil {
+		return nil, []error{fmt.Errorf("failed to close gzip writer: %w", err)}
+	}
+
 	headers := http.Header{}
 	headers.Set("Content-Type", "application/json;charset=utf-8")
+	headers.Set("Content-Encoding", "gzip")
 	headers.Set("Accept", "application/json")
+	headers.Set("Accept-Encoding", "gzip")
 
 	return []*adapters.RequestData{{
 		Method:  "POST",
 		URI:     a.endpoint,
-		Body:    requestBody,
+		Body:    compressedBody.Bytes(),
 		Headers: headers,
 	}}, nil
 }
 
-// MakeBids parses Kargo responses into bids
+// MakeBids parses Kargo responses into bids (handles GZIP-compressed responses)
 func (a *Adapter) MakeBids(request *openrtb.BidRequest, responseData *adapters.ResponseData) (*adapters.BidderResponse, []error) {
 	if responseData.StatusCode == http.StatusNoContent {
 		return nil, nil
@@ -61,8 +75,24 @@ func (a *Adapter) MakeBids(request *openrtb.BidRequest, responseData *adapters.R
 		return nil, []error{fmt.Errorf("unexpected status: %d", responseData.StatusCode)}
 	}
 
+	// Decompress response if GZIP-encoded
+	responseBody := responseData.Body
+	if responseData.Headers.Get("Content-Encoding") == "gzip" {
+		gzipReader, err := gzip.NewReader(bytes.NewReader(responseData.Body))
+		if err != nil {
+			return nil, []error{fmt.Errorf("failed to create gzip reader: %w", err)}
+		}
+		defer gzipReader.Close()
+
+		var decompressed bytes.Buffer
+		if _, err := decompressed.ReadFrom(gzipReader); err != nil {
+			return nil, []error{fmt.Errorf("failed to decompress response: %w", err)}
+		}
+		responseBody = decompressed.Bytes()
+	}
+
 	var bidResp openrtb.BidResponse
-	if err := json.Unmarshal(responseData.Body, &bidResp); err != nil {
+	if err := json.Unmarshal(responseBody, &bidResp); err != nil {
 		return nil, []error{fmt.Errorf("failed to parse response: %w", err)}
 	}
 
