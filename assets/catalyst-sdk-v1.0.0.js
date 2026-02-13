@@ -294,20 +294,25 @@
       }
     }
 
-    // Include user IDs from cookie
+    // Include user IDs and FPID as OpenRTB eids
     var userIds = catalyst._getUserIds();
-    if (Object.keys(userIds).length > 0) {
-      bidRequest.user = bidRequest.user || {};
-      bidRequest.user.userIds = userIds;
-      catalyst.log('Including user IDs for bidders:', Object.keys(userIds).join(', '));
-    }
-
-    // Include FPID (only if consent is available)
     var fpid = catalyst._fpidManager.getOrCreate();
-    if (fpid) {
+
+    // Build eids array (OpenRTB Extended Identifiers standard)
+    var eids = catalyst._buildEids(userIds, fpid);
+
+    if (eids.length > 0) {
       bidRequest.user = bidRequest.user || {};
-      bidRequest.user.fpid = fpid;
-      catalyst.log('Including FPID:', fpid);
+      bidRequest.user.ext = bidRequest.user.ext || {};
+      bidRequest.user.ext.eids = eids;
+
+      catalyst.log('Including', eids.length, 'extended identifiers (eids)');
+      if (fpid) {
+        catalyst.log('  - FPID:', fpid);
+      }
+      if (Object.keys(userIds).length > 0) {
+        catalyst.log('  - Bidder IDs:', Object.keys(userIds).join(', '));
+      }
     } else {
       catalyst.log('FPID not included - consent not available');
     }
@@ -566,6 +571,57 @@
     }
 
     return userIds;
+  };
+
+  /**
+   * Convert userIds object to OpenRTB eids array format
+   * @param {Object} userIds - Object mapping bidder codes to user IDs
+   * @param {string} fpid - First-party identifier
+   * @returns {Array} OpenRTB Extended Identifiers array
+   * @private
+   */
+  catalyst._buildEids = function(userIds, fpid) {
+    var eids = [];
+
+    // Bidder source mapping (bidder code → eid source domain)
+    var bidderSources = {
+      'kargo': 'kargo.com',
+      'rubicon': 'rubiconproject.com',
+      'pubmatic': 'pubmatic.com',
+      'appnexus': 'appnexus.com',
+      'sovrn': 'lijit.com',
+      'triplelift': 'triplelift.com',
+      'id5': 'id5-sync.com',
+      'liveintent': 'liveintent.com',
+      'criteo': 'criteo.com',
+      'thetradedesk': 'adsrvr.org',
+      'pubcid': 'pubcid.org'
+    };
+
+    // Add first-party ID first
+    if (fpid) {
+      eids.push({
+        source: 'thenexusengine.com',
+        uids: [{
+          id: fpid,
+          atype: 1  // atype 1 = cookie/device ID
+        }]
+      });
+    }
+
+    // Add bidder-specific IDs
+    for (var bidder in userIds) {
+      var source = bidderSources[bidder] || (bidder + '.com');
+      eids.push({
+        source: source,
+        uids: [{
+          id: userIds[bidder],
+          atype: 1
+        }]
+      });
+    }
+
+    return eids;
   };
 
   /**
