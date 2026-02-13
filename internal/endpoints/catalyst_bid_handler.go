@@ -636,7 +636,7 @@ func (h *CatalystBidHandler) convertToOpenRTB(r *http.Request, maiBid *MAIBidReq
 					deviceObj.Geo.Region = geoInfo.Region
 					deviceObj.Geo.City = geoInfo.City
 					deviceObj.Geo.Metro = geoInfo.Metro
-					deviceObj.Geo.Zip = geoInfo.Zip
+					deviceObj.Geo.ZIP = geoInfo.Zip
 				}
 			}
 		}
@@ -658,7 +658,7 @@ func (h *CatalystBidHandler) convertToOpenRTB(r *http.Request, maiBid *MAIBidReq
 					Region:  geoInfo.Region,
 					City:    geoInfo.City,
 					Metro:   geoInfo.Metro,
-					Zip:     geoInfo.Zip,
+					ZIP:     geoInfo.Zip,
 					Lat:     geoInfo.Lat,
 					Lon:     geoInfo.Lon,
 					Type:    2, // IP-based geolocation
