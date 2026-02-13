@@ -15,6 +15,45 @@ const (
 	defaultEndpoint = "https://prebid-server.rubiconproject.com/openrtb2/auction"
 )
 
+// Rubicon-specific extension structures
+type rubiconParams struct {
+	AccountID        int  `json:"accountId"`
+	SiteID           int  `json:"siteId"`
+	ZoneID           int  `json:"zoneId"`
+	BidOnMultiformat bool `json:"bidonmultiformat"`
+}
+
+type rubiconImpExt struct {
+	RP rubiconImpExtRP `json:"rp"`
+}
+
+type rubiconImpExtRP struct {
+	ZoneID int             `json:"zone_id"`
+	Track  rubiconTrack    `json:"track"`
+	Target json.RawMessage `json:"target,omitempty"`
+}
+
+type rubiconTrack struct {
+	Mint        string `json:"mint"`
+	MintVersion string `json:"mint_version"`
+}
+
+type rubiconSiteExt struct {
+	RP rubiconSiteExtRP `json:"rp"`
+}
+
+type rubiconSiteExtRP struct {
+	SiteID int `json:"site_id"`
+}
+
+type rubiconPubExt struct {
+	RP rubiconPubExtRP `json:"rp"`
+}
+
+type rubiconPubExtRP struct {
+	AccountID int `json:"account_id"`
+}
+
 // Adapter implements the Rubicon bidder
 type Adapter struct {
 	endpoint string
@@ -41,8 +80,65 @@ func (a *Adapter) MakeRequests(request *openrtb.BidRequest, extraInfo *adapters.
 
 	// Rubicon requires one request per impression
 	for _, imp := range request.Imp {
+		// Extract Rubicon parameters from imp.Ext
+		rubiconParams, err := extractRubiconParams(imp.Ext)
+		if err != nil {
+			errors = append(errors, fmt.Errorf("failed to extract Rubicon params for imp %s: %w", imp.ID, err))
+			continue
+		}
+
+		// Create a copy of the request for this impression
 		reqCopy := *request
-		reqCopy.Imp = []openrtb.Imp{imp}
+		impCopy := imp
+
+		// Transform impression extension to Rubicon's expected format
+		impExt := rubiconImpExt{
+			RP: rubiconImpExtRP{
+				ZoneID: rubiconParams.ZoneID,
+				Track:  rubiconTrack{Mint: "", MintVersion: ""},
+			},
+		}
+		impCopy.Ext, err = json.Marshal(impExt)
+		if err != nil {
+			errors = append(errors, fmt.Errorf("failed to marshal imp ext for imp %s: %w", imp.ID, err))
+			continue
+		}
+
+		reqCopy.Imp = []openrtb.Imp{impCopy}
+
+		// Transform Site with Rubicon extensions
+		if reqCopy.Site != nil {
+			siteCopy := *reqCopy.Site
+
+			// Set Rubicon site extension
+			siteExt := rubiconSiteExt{
+				RP: rubiconSiteExtRP{
+					SiteID: rubiconParams.SiteID,
+				},
+			}
+			siteCopy.Ext, err = json.Marshal(siteExt)
+			if err != nil {
+				errors = append(errors, fmt.Errorf("failed to marshal site ext: %w", err))
+				continue
+			}
+
+			// Set Rubicon publisher extension
+			if siteCopy.Publisher == nil {
+				siteCopy.Publisher = &openrtb.Publisher{}
+			}
+			pubExt := rubiconPubExt{
+				RP: rubiconPubExtRP{
+					AccountID: rubiconParams.AccountID,
+				},
+			}
+			siteCopy.Publisher.Ext, err = json.Marshal(pubExt)
+			if err != nil {
+				errors = append(errors, fmt.Errorf("failed to marshal publisher ext: %w", err))
+				continue
+			}
+
+			reqCopy.Site = &siteCopy
+		}
 
 		requestBody, err := json.Marshal(reqCopy)
 		if err != nil {
@@ -63,14 +159,17 @@ func (a *Adapter) MakeRequests(request *openrtb.BidRequest, extraInfo *adapters.
 
 		// Log the request body for verification
 		requestPreview := string(requestBody)
-		if len(requestPreview) > 1000 {
-			requestPreview = requestPreview[:1000] + "..."
+		if len(requestPreview) > 1500 {
+			requestPreview = requestPreview[:1500] + "..."
 		}
 
 		logger.Log.Debug().
 			Str("adapter", "rubicon").
 			Str("imp_id", imp.ID).
 			Str("endpoint", a.endpoint).
+			Int("account_id", rubiconParams.AccountID).
+			Int("site_id", rubiconParams.SiteID).
+			Int("zone_id", rubiconParams.ZoneID).
 			Int("body_size", len(requestBody)).
 			Str("request_body", requestPreview).
 			Msg("Rubicon request created")
@@ -83,6 +182,71 @@ func (a *Adapter) MakeRequests(request *openrtb.BidRequest, extraInfo *adapters.
 		Msg("Rubicon MakeRequests completed")
 
 	return requests, errors
+}
+
+// extractRubiconParams extracts Rubicon-specific parameters from impression extension
+func extractRubiconParams(impExt json.RawMessage) (*rubiconParams, error) {
+	var extMap map[string]interface{}
+	if err := json.Unmarshal(impExt, &extMap); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal imp.ext: %w", err)
+	}
+
+	// Look for Rubicon params in ext.rubicon
+	var rubiconData map[string]interface{}
+
+	if rubicon, ok := extMap["rubicon"].(map[string]interface{}); ok {
+		rubiconData = rubicon
+	}
+
+	if rubiconData == nil {
+		return nil, fmt.Errorf("no Rubicon parameters found in imp.ext")
+	}
+
+	params := &rubiconParams{}
+
+	// Extract accountId (can be int or float64 from JSON)
+	if accountID, ok := rubiconData["accountId"]; ok {
+		switch v := accountID.(type) {
+		case float64:
+			params.AccountID = int(v)
+		case int:
+			params.AccountID = v
+		default:
+			return nil, fmt.Errorf("accountId must be a number")
+		}
+	} else {
+		return nil, fmt.Errorf("accountId is required")
+	}
+
+	// Extract siteId
+	if siteID, ok := rubiconData["siteId"]; ok {
+		switch v := siteID.(type) {
+		case float64:
+			params.SiteID = int(v)
+		case int:
+			params.SiteID = v
+		default:
+			return nil, fmt.Errorf("siteId must be a number")
+		}
+	} else {
+		return nil, fmt.Errorf("siteId is required")
+	}
+
+	// Extract zoneId
+	if zoneID, ok := rubiconData["zoneId"]; ok {
+		switch v := zoneID.(type) {
+		case float64:
+			params.ZoneID = int(v)
+		case int:
+			params.ZoneID = v
+		default:
+			return nil, fmt.Errorf("zoneId must be a number")
+		}
+	} else {
+		return nil, fmt.Errorf("zoneId is required")
+	}
+
+	return params, nil
 }
 
 // MakeBids parses Rubicon responses into bids
