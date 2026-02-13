@@ -1488,6 +1488,31 @@ func (e *Exchange) RunAuction(ctx context.Context, req *AuctionRequest) (*Auctio
 			e.metrics.RecordBidderRequest(bidderCode, result.Latency, hasError, result.TimedOut)
 		}
 
+		// Log bidder response status for timeout monitoring
+		hadBids := len(result.Bids) > 0
+		hadErrors := len(result.Errors) > 0
+
+		logEvent := logger.Log.Info().
+			Str("bidder", bidderCode).
+			Dur("latency_ms", result.Latency).
+			Bool("timed_out", result.TimedOut).
+			Bool("had_bids", hadBids).
+			Bool("had_errors", hadErrors)
+
+		if hadBids {
+			logEvent.Int("bid_count", len(result.Bids))
+		}
+
+		if result.TimedOut {
+			logEvent.Msg("Bidder timeout detected")
+		} else if !hadBids && !hadErrors {
+			logEvent.Msg("Bidder returned no bids (no error)")
+		} else if hadBids {
+			logEvent.Msg("Bidder responded with bids")
+		} else if hadErrors {
+			logEvent.Msg("Bidder failed with errors")
+		}
+
 		if len(result.Errors) > 0 {
 			errStrs := make([]string, len(result.Errors))
 			for i, err := range result.Errors {
@@ -1682,13 +1707,35 @@ func (e *Exchange) RunAuction(ctx context.Context, req *AuctionRequest) (*Auctio
 	for _, sb := range allBids {
 		totalBids += len(sb.Bid)
 	}
-	logger.Log.Debug().
+
+	// Calculate timeout and response statistics
+	timedOutCount := 0
+	emptyResponseCount := 0
+	bidsReceivedCount := 0
+	errorCount := 0
+	for _, result := range response.BidderResults {
+		if result.TimedOut {
+			timedOutCount++
+		} else if len(result.Bids) > 0 {
+			bidsReceivedCount++
+		} else if len(result.Errors) > 0 {
+			errorCount++
+		} else {
+			emptyResponseCount++
+		}
+	}
+
+	logger.Log.Info().
 		Str("requestID", req.BidRequest.ID).
-		Int("bidders", len(selectedBidders)).
+		Int("bidders_total", len(selectedBidders)).
+		Int("bidders_with_bids", bidsReceivedCount).
+		Int("bidders_timed_out", timedOutCount).
+		Int("bidders_empty", emptyResponseCount).
+		Int("bidders_error", errorCount).
 		Int("impressions", len(req.BidRequest.Imp)).
-		Int("bids", totalBids).
-		Dur("latency", response.DebugInfo.TotalLatency).
-		Msg("auction completed")
+		Int("total_bids", totalBids).
+		Dur("total_latency", response.DebugInfo.TotalLatency).
+		Msg("Auction completed")
 
 	// Record auction metrics
 	if e.metrics != nil {
