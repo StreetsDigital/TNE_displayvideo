@@ -20,6 +20,8 @@
     serverUrl: window.location.protocol + '//' + window.location.host,
     timeout: 2800, // Client-side timeout (slightly higher than server 2500ms)
     debug: false,
+    enableGeo: true, // Enable client-side geolocation (15-30% CPM lift)
+    geoTimeout: 1000, // Geolocation timeout in ms (don't block bid request)
     userSync: {
       enabled: true,
       bidders: ['kargo', 'rubicon', 'pubmatic', 'sovrn', 'triplelift'],
@@ -35,6 +37,100 @@
   catalyst._initialized = false;
   catalyst._userSyncComplete = false;
   catalyst._syncedBidders = [];
+
+  // Geolocation cache (15-30% CPM lift when available)
+  catalyst._geoCache = {
+    data: null,           // Cached geo data {lat, lon, accuracy}
+    timestamp: null,      // When geo was obtained
+    maxAge: 300000,       // Cache for 5 minutes (300,000ms)
+    pending: false,       // Geo request in progress
+
+    // Check if cached geo is still valid
+    isValid: function() {
+      if (!this.data || !this.timestamp) {
+        return false;
+      }
+      var age = Date.now() - this.timestamp;
+      return age < this.maxAge;
+    },
+
+    // Get cached geo or request new
+    getOrRequest: function(callback) {
+      // Return cached if valid
+      if (this.isValid()) {
+        catalyst.log('Using cached geolocation:', this.data);
+        callback(this.data);
+        return;
+      }
+
+      // Don't request if geo is disabled
+      if (catalyst._config.enableGeo === false) {
+        callback(null);
+        return;
+      }
+
+      // Don't request if already pending
+      if (this.pending) {
+        callback(null);
+        return;
+      }
+
+      // Check if geolocation API is available
+      if (!navigator.geolocation) {
+        catalyst.log('Geolocation API not available');
+        callback(null);
+        return;
+      }
+
+      this.pending = true;
+      var cache = this;
+      var timeout = catalyst._config.geoTimeout || 1000;
+      var timedOut = false;
+
+      // Set timeout to prevent blocking bid request
+      var timer = setTimeout(function() {
+        timedOut = true;
+        cache.pending = false;
+        catalyst.log('Geolocation request timed out after', timeout, 'ms - continuing without geo');
+        callback(null);
+      }, timeout);
+
+      // Request geolocation
+      navigator.geolocation.getCurrentPosition(
+        function(position) {
+          clearTimeout(timer);
+          if (!timedOut) {
+            cache.data = {
+              lat: position.coords.latitude,
+              lon: position.coords.longitude,
+              accuracy: Math.round(position.coords.accuracy)
+            };
+            cache.timestamp = Date.now();
+            cache.pending = false;
+
+            catalyst.log('Geolocation obtained:',
+              'lat=' + cache.data.lat.toFixed(4),
+              'lon=' + cache.data.lon.toFixed(4),
+              'accuracy=' + cache.data.accuracy + 'm');
+            callback(cache.data);
+          }
+        },
+        function(error) {
+          clearTimeout(timer);
+          if (!timedOut) {
+            cache.pending = false;
+            catalyst.log('Geolocation error:', error.message);
+            callback(null);
+          }
+        },
+        {
+          timeout: timeout,
+          maximumAge: cache.maxAge,
+          enableHighAccuracy: false // Use network location for speed
+        }
+      );
+    }
+  };
 
   // First-Party ID Manager
   catalyst._fpidManager = {
@@ -234,7 +330,8 @@
         width: window.screen.width,
         height: window.screen.height,
         deviceType: catalyst._detectDeviceType(),
-        userAgent: navigator.userAgent
+        userAgent: navigator.userAgent,
+        geo: null // Will be populated if available
       }
     };
 
@@ -417,13 +514,26 @@
       });
     };
 
-    // Add privacy/consent info if available, then send request
-    if (window.__tcfapi || window.__uspapi || window.__cmp) {
-      catalyst._addPrivacyConsent(bidRequest, sendBidRequest);
-    } else {
-      // No privacy APIs available, send immediately
-      sendBidRequest();
-    }
+    // Try to get geolocation, then add privacy consent, then send request
+    // Geo collection is async but won't block the bid request (max 1s delay)
+    catalyst._geoCache.getOrRequest(function(geoData) {
+      // Add geo to device if available (15-30% CPM lift)
+      if (geoData) {
+        bidRequest.device.geo = geoData;
+        catalyst.log('Including client-side geolocation in bid request');
+      } else {
+        // Server will use IP-based geo as fallback
+        catalyst.log('No client-side geo available - server will use IP geolocation');
+      }
+
+      // Add privacy/consent info if available, then send request
+      if (window.__tcfapi || window.__uspapi || window.__cmp) {
+        catalyst._addPrivacyConsent(bidRequest, sendBidRequest);
+      } else {
+        // No privacy APIs available, send immediately
+        sendBidRequest();
+      }
+    });
   };
 
   /**

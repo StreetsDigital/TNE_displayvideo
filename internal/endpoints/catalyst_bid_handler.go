@@ -10,7 +10,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/thenexusengine/tne_springwire/internal/device"
 	"github.com/thenexusengine/tne_springwire/internal/exchange"
+	"github.com/thenexusengine/tne_springwire/internal/geo"
 	"github.com/thenexusengine/tne_springwire/internal/openrtb"
 	"github.com/thenexusengine/tne_springwire/internal/storage"
 	"github.com/thenexusengine/tne_springwire/internal/usersync"
@@ -142,10 +144,18 @@ type MAIUser struct {
 
 // MAIDevice represents device info
 type MAIDevice struct {
-	Width      int    `json:"width,omitempty"`
-	Height     int    `json:"height,omitempty"`
-	DeviceType string `json:"deviceType,omitempty"`
-	UserAgent  string `json:"userAgent,omitempty"`
+	Width      int      `json:"width,omitempty"`
+	Height     int      `json:"height,omitempty"`
+	DeviceType string   `json:"deviceType,omitempty"`
+	UserAgent  string   `json:"userAgent,omitempty"`
+	Geo        *MAIGeo  `json:"geo,omitempty"` // Client-side geolocation (optional)
+}
+
+// MAIGeo represents client-side geolocation data
+type MAIGeo struct {
+	Lat      float64 `json:"lat,omitempty"`      // Latitude from GPS/browser
+	Lon      float64 `json:"lon,omitempty"`      // Longitude from GPS/browser
+	Accuracy int     `json:"accuracy,omitempty"` // Accuracy in meters
 }
 
 // MAIBidResponse represents the MAI Publisher bid response format
@@ -369,8 +379,10 @@ func (h *CatalystBidHandler) convertToOpenRTB(r *http.Request, maiBid *MAIBidReq
 		}
 
 		// We'll set TagID after resolving adUnitPath below
+		secureFlag := 1 // Assume HTTPS (OpenRTB 2.6 requirement)
 		imp := openrtb.Imp{
-			ID: impID,
+			ID:     impID,
+			Secure: &secureFlag,
 			Banner: &openrtb.Banner{
 				W:      slot.Sizes[0][0], // Use first size as primary
 				H:      slot.Sizes[0][1],
@@ -534,30 +546,140 @@ func (h *CatalystBidHandler) convertToOpenRTB(r *http.Request, maiBid *MAIBidReq
 		}
 	}
 
+	// Add publisher object (OpenRTB 2.6 requirement for brand safety and publisher identification)
+	site.Publisher = &openrtb.Publisher{
+		ID: maiBid.AccountID,
+	}
+
+	// Try to get publisher name from database
+	if h.publisherStore != nil {
+		if pub, err := h.publisherStore.GetByPublisherID(r.Context(), maiBid.AccountID); err == nil && pub != nil {
+			if publisher, ok := pub.(*storage.Publisher); ok && publisher.Name != "" {
+				site.Publisher.Name = publisher.Name
+			}
+		}
+	}
+
+	// Set publisher domain from site domain
+	if site.Domain != "" {
+		site.Publisher.Domain = site.Domain
+	}
+
 	// Build device
-	device := &openrtb.Device{
+	deviceObj := &openrtb.Device{
 		UA: r.Header.Get("User-Agent"),
 		IP: getClientIP(r),
 	}
 
 	if maiBid.Device != nil {
 		if maiBid.Device.UserAgent != "" {
-			device.UA = maiBid.Device.UserAgent
+			deviceObj.UA = maiBid.Device.UserAgent
 		}
 		if maiBid.Device.Width > 0 && maiBid.Device.Height > 0 {
-			device.W = maiBid.Device.Width
-			device.H = maiBid.Device.Height
+			deviceObj.W = maiBid.Device.Width
+			deviceObj.H = maiBid.Device.Height
 		}
 		// Map device type to OpenRTB device type
 		switch strings.ToLower(maiBid.Device.DeviceType) {
 		case "mobile", "phone":
-			device.DeviceType = 1 // Mobile/Tablet
+			deviceObj.DeviceType = 1 // Mobile/Tablet
 		case "tablet":
-			device.DeviceType = 5 // Tablet
+			deviceObj.DeviceType = 5 // Tablet
 		case "desktop", "pc":
-			device.DeviceType = 2 // Personal Computer
+			deviceObj.DeviceType = 2 // Personal Computer
 		case "tv", "ctv", "connected_tv":
-			device.DeviceType = 3 // Connected TV
+			deviceObj.DeviceType = 3 // Connected TV
+		}
+	}
+
+	// Parse User-Agent to extract device details (OpenRTB 2.6 enhancement)
+	if deviceObj.UA != "" {
+		if deviceInfo := device.ParseUserAgent(deviceObj.UA); deviceInfo != nil {
+			// Set device make, model, os, osv from parsed UA
+			deviceObj.Make = deviceInfo.Make
+			deviceObj.Model = deviceInfo.Model
+			deviceObj.OS = deviceInfo.OS
+			deviceObj.OSV = deviceInfo.OSV
+
+			// Override device type from UA parser if not already set from client
+			if deviceObj.DeviceType == 0 {
+				deviceObj.DeviceType = deviceInfo.DeviceType
+			}
+
+			logger.Log.Debug().
+				Str("make", deviceObj.Make).
+				Str("model", deviceObj.Model).
+				Str("os", deviceObj.OS).
+				Str("osv", deviceObj.OSV).
+				Int("device_type", deviceObj.DeviceType).
+				Msg("Parsed device details from User-Agent")
+		}
+	}
+
+	// Add geolocation data (OpenRTB 2.6 critical enhancement - 15-30% CPM lift)
+	// Priority: Client-side geo (GPS/browser) > IP-based geo
+	if maiBid.Device != nil && maiBid.Device.Geo != nil && maiBid.Device.Geo.Lat != 0 && maiBid.Device.Geo.Lon != 0 {
+		// Client-side geolocation available (most accurate)
+		deviceObj.Geo = &openrtb.Geo{
+			Lat:  maiBid.Device.Geo.Lat,
+			Lon:  maiBid.Device.Geo.Lon,
+			Type: 1, // GPS/Location Services
+		}
+
+		// Try to reverse geocode for country/region/city using IP geo service
+		// This enriches client-side lat/lon with administrative region data
+		if deviceObj.IP != "" {
+			geoService, err := geo.GetDefaultService()
+			if err == nil && geoService != nil {
+				if geoInfo := geoService.LookupSafe(deviceObj.IP); geoInfo != nil {
+					deviceObj.Geo.Country = geoInfo.Country
+					deviceObj.Geo.Region = geoInfo.Region
+					deviceObj.Geo.City = geoInfo.City
+					deviceObj.Geo.Metro = geoInfo.Metro
+					deviceObj.Geo.Zip = geoInfo.Zip
+				}
+			}
+		}
+
+		logger.Log.Info().
+			Float64("lat", deviceObj.Geo.Lat).
+			Float64("lon", deviceObj.Geo.Lon).
+			Str("country", deviceObj.Geo.Country).
+			Int("accuracy", maiBid.Device.Geo.Accuracy).
+			Msg("Using client-side geolocation (GPS/browser)")
+	} else if deviceObj.IP != "" {
+		// Fallback to IP-based geolocation
+		geoService, err := geo.GetDefaultService()
+		if err == nil && geoService != nil {
+			// Perform IP geolocation lookup
+			if geoInfo := geoService.LookupSafe(deviceObj.IP); geoInfo != nil {
+				deviceObj.Geo = &openrtb.Geo{
+					Country: geoInfo.Country,
+					Region:  geoInfo.Region,
+					City:    geoInfo.City,
+					Metro:   geoInfo.Metro,
+					Zip:     geoInfo.Zip,
+					Lat:     geoInfo.Lat,
+					Lon:     geoInfo.Lon,
+					Type:    2, // IP-based geolocation
+				}
+
+				logger.Log.Info().
+					Str("ip", deviceObj.IP).
+					Str("country", geoInfo.Country).
+					Str("region", geoInfo.Region).
+					Str("city", geoInfo.City).
+					Float64("lat", geoInfo.Lat).
+					Float64("lon", geoInfo.Lon).
+					Msg("Added IP-based geolocation to device")
+			} else {
+				logger.Log.Debug().
+					Str("ip", deviceObj.IP).
+					Msg("IP geolocation lookup returned no results")
+			}
+		} else {
+			logger.Log.Debug().
+				Msg("GeoIP service not available - skipping geolocation (set GEOIP2_DB_PATH env var)")
 		}
 	}
 
@@ -668,6 +790,50 @@ func (h *CatalystBidHandler) convertToOpenRTB(r *http.Request, maiBid *MAIBidReq
 			} else {
 				user.Consent = "0"  // No consent
 			}
+
+			// Format user.data segments for first-party data targeting (OpenRTB 2.6)
+			if len(maiBid.User.Data) > 0 {
+				user.Data = make([]openrtb.Data, 0, len(maiBid.User.Data))
+				for _, segment := range maiBid.User.Data {
+					data := openrtb.Data{}
+
+					// Extract name if present
+					if name, ok := segment["name"].(string); ok {
+						data.Name = name
+					}
+
+					// Extract ID if present
+					if id, ok := segment["id"].(string); ok {
+						data.ID = id
+					}
+
+					// Extract segments if present
+					if segs, ok := segment["segment"].([]interface{}); ok {
+						data.Segment = make([]openrtb.Segment, 0, len(segs))
+						for _, seg := range segs {
+							if segMap, ok := seg.(map[string]interface{}); ok {
+								segment := openrtb.Segment{}
+								if id, ok := segMap["id"].(string); ok {
+									segment.ID = id
+								}
+								if name, ok := segMap["name"].(string); ok {
+									segment.Name = name
+								}
+								if value, ok := segMap["value"].(string); ok {
+									segment.Value = value
+								}
+								data.Segment = append(data.Segment, segment)
+							}
+						}
+					}
+
+					user.Data = append(user.Data, data)
+				}
+
+				logger.Log.Info().
+					Int("data_segments", len(user.Data)).
+					Msg("Formatted user.data segments for OpenRTB")
+			}
 		}
 	}
 
@@ -688,7 +854,7 @@ func (h *CatalystBidHandler) convertToOpenRTB(r *http.Request, maiBid *MAIBidReq
 		ID:     requestID,
 		Imp:    imps,
 		Site:   site,
-		Device: device,
+		Device: deviceObj,
 		User:   user,
 		Regs:   regs,
 		Cur:    []string{"USD"},
