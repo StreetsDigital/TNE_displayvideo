@@ -430,6 +430,13 @@
   catalyst._makeBidRequest = function(bidRequest, callback) {
     var url = catalyst._config.serverUrl + '/v1/bid';
 
+    // Log complete bid request if debug enabled
+    if (catalyst._config.debug) {
+      catalyst.log('=== FULL BID REQUEST ===');
+      catalyst.log(JSON.stringify(bidRequest, null, 2));
+      catalyst.log('========================');
+    }
+
     var xhr = new XMLHttpRequest();
     xhr.open('POST', url, true);
     xhr.setRequestHeader('Content-Type', 'application/json');
@@ -439,27 +446,41 @@
       if (xhr.status >= 200 && xhr.status < 300) {
         try {
           var response = JSON.parse(xhr.responseText);
+
+          // Log complete bid response if debug enabled
+          if (catalyst._config.debug) {
+            catalyst.log('=== FULL BID RESPONSE ===');
+            catalyst.log(JSON.stringify(response, null, 2));
+            catalyst.log('=========================');
+          }
+
           callback(null, response);
         } catch (e) {
           catalyst.log('Error parsing response:', e);
+          catalyst.log('Response text:', xhr.responseText);
           callback(e, null);
         }
       } else {
+        catalyst.log('Bid request failed with status:', xhr.status);
+        catalyst.log('Response:', xhr.responseText);
         callback(new Error('HTTP ' + xhr.status), null);
       }
     };
 
     xhr.onerror = function() {
+      catalyst.log('Network error making bid request');
       callback(new Error('Network error'), null);
     };
 
     xhr.ontimeout = function() {
+      catalyst.log('Bid request timeout after', catalyst._config.timeout, 'ms');
       callback(new Error('Request timeout'), null);
     };
 
     try {
       xhr.send(JSON.stringify(bidRequest));
     } catch (e) {
+      catalyst.log('Exception sending bid request:', e);
       callback(e, null);
     }
   };
