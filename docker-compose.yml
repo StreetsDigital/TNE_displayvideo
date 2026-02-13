@@ -8,7 +8,6 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - PBS_DISABLE_GDPR_ENFORCEMENT=true
       - PBS_ENFORCE_GDPR=false
       - PBS_ENFORCE_CCPA=false
       - PBS_ENFORCE_COPPA=false
@@ -17,7 +16,7 @@ services:
       - LOG_LEVEL=debug
       - PBS_TIMEOUT=2500ms
       - TZ=America/New_York
-      - CORS_ALLOW_ALL=true
+      - CORS_ORIGINS=*
       - IDR_ENABLED=false
       - DB_HOST=catalyst-postgres
       - DB_PORT=5432

@@ -306,6 +306,7 @@ func (s *Server) initHandlers() {
 
 	log.Info().
 		Bool("gdpr_enforcement", privacyConfig.EnforceGDPR).
+		Bool("ccpa_enforcement", privacyConfig.EnforceCCPA).
 		Bool("coppa_enforcement", privacyConfig.EnforceCOPPA).
 		Bool("strict_mode", privacyConfig.StrictMode).
 		Msg("Privacy middleware initialized")
