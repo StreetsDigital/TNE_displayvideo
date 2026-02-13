@@ -32,7 +32,40 @@ func New(endpoint string) *Adapter {
 
 // MakeRequests builds HTTP requests for Kargo with GZIP compression
 func (a *Adapter) MakeRequests(request *openrtb.BidRequest, extraInfo *adapters.ExtraRequestInfo) ([]*adapters.RequestData, []error) {
-	requestBody, err := json.Marshal(request)
+	// Create a copy of the request to modify
+	requestCopy := *request
+
+	// Remove Catalyst internal IDs from Site
+	if requestCopy.Site != nil {
+		siteCopy := *requestCopy.Site
+		siteCopy.ID = "" // Remove site.id
+
+		// Remove publisher.id if exists
+		if siteCopy.Publisher != nil {
+			pubCopy := *siteCopy.Publisher
+			pubCopy.ID = "" // Remove publisher.id
+			siteCopy.Publisher = &pubCopy
+		}
+
+		requestCopy.Site = &siteCopy
+	}
+
+	// Remove Catalyst internal IDs from App (if present)
+	if requestCopy.App != nil {
+		appCopy := *requestCopy.App
+		appCopy.ID = "" // Remove app.id
+
+		// Remove publisher.id if exists
+		if appCopy.Publisher != nil {
+			pubCopy := *appCopy.Publisher
+			pubCopy.ID = "" // Remove publisher.id
+			appCopy.Publisher = &pubCopy
+		}
+
+		requestCopy.App = &appCopy
+	}
+
+	requestBody, err := json.Marshal(requestCopy)
 	if err != nil {
 		return nil, []error{fmt.Errorf("failed to marshal request: %w", err)}
 	}
