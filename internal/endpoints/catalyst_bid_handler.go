@@ -392,7 +392,7 @@ func (h *CatalystBidHandler) convertToOpenRTB(r *http.Request, maiBid *MAIBidReq
 		}
 
 		// If adUnitPath is missing, try to resolve it from divId mapping
-		adUnitPath := adUnitPath
+		adUnitPath := slot.AdUnitPath
 		if adUnitPath == "" && h.publisherStore != nil {
 			resolvedPath, err := h.publisherStore.GetAdUnitPathFromDivID(r.Context(), maiBid.AccountID, domain, slot.DivID)
 			if err == nil && resolvedPath != "" {
