@@ -132,7 +132,19 @@ func (a *Adapter) MakeRequests(request *openrtb.BidRequest, extraInfo *adapters.
 			// CRITICAL: Set publisher.id to Rubicon's account ID
 			// Rubicon checks this field BEFORE ext.rp.account_id
 			accountIDStr := fmt.Sprintf("%d", rubiconParams.AccountID)
+
+			logger.Log.Debug().
+				Str("adapter", "rubicon").
+				Str("before_id", siteCopy.Publisher.ID).
+				Str("setting_to", accountIDStr).
+				Msg("About to set publisher.id")
+
 			siteCopy.Publisher.ID = accountIDStr
+
+			logger.Log.Debug().
+				Str("adapter", "rubicon").
+				Str("after_id", siteCopy.Publisher.ID).
+				Msg("After setting publisher.id")
 
 			pubExt := rubiconPubExt{
 				RP: rubiconPubExtRP{
