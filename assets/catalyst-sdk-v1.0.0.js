@@ -130,10 +130,14 @@
    * @param {string} [config.serverUrl] - Optional custom server URL
    * @param {number} [config.timeout] - Optional timeout in ms (default: 2800)
    * @param {boolean} [config.debug] - Enable debug logging
+   * @param {Function} [callback] - Optional callback function called when SDK is ready (after user sync completes)
    */
-  catalyst.init = function(config) {
+  catalyst.init = function(config, callback) {
     if (!config || !config.accountId) {
       catalyst.log('Error: accountId is required');
+      if (typeof callback === 'function') {
+        callback();
+      }
       return;
     }
 
@@ -167,12 +171,19 @@
     catalyst._initialized = true;
     catalyst.log('Catalyst SDK initialized with accountId:', config.accountId);
 
-    // Trigger user sync after initialization (with delay)
+    // Trigger user sync IMMEDIATELY (no delay) and wait for completion before callback
     if (catalyst._config.userSync.enabled) {
-      var syncDelay = catalyst._config.userSync.syncDelay || 1000;
-      setTimeout(function() {
-        catalyst._performUserSync();
-      }, syncDelay);
+      catalyst._performUserSync(function() {
+        catalyst.log('User sync complete - SDK ready for bid requests');
+        if (typeof callback === 'function') {
+          callback();
+        }
+      });
+    } else {
+      // User sync disabled, ready immediately
+      if (typeof callback === 'function') {
+        callback();
+      }
     }
   };
 
@@ -189,6 +200,11 @@
         callback([]);
       }
       return;
+    }
+
+    // Warn if user sync hasn't completed yet (may result in lower bid responses)
+    if (catalyst._config.userSync.enabled && !catalyst._userSyncComplete) {
+      catalyst.log('Warning: requestBids called before user sync completed - bidders may not have synced IDs yet');
     }
 
     if (!config || !config.slots || config.slots.length === 0) {
@@ -714,14 +730,20 @@
    * Perform user sync with configured bidders
    * @private
    */
-  catalyst._performUserSync = function() {
+  catalyst._performUserSync = function(onComplete) {
     if (!catalyst._config.userSync.enabled) {
       catalyst.log('User sync disabled');
+      if (typeof onComplete === 'function') {
+        onComplete();
+      }
       return;
     }
 
     if (catalyst._userSyncComplete) {
       catalyst.log('User sync already performed');
+      if (typeof onComplete === 'function') {
+        onComplete();
+      }
       return;
     }
 
@@ -766,14 +788,26 @@
         } else {
           catalyst.log('User sync request failed:', xhr.status);
         }
+        // Call completion callback even on failure
+        if (typeof onComplete === 'function') {
+          onComplete();
+        }
       };
 
       xhr.onerror = function() {
         catalyst.log('User sync network error');
+        // Call completion callback even on error
+        if (typeof onComplete === 'function') {
+          onComplete();
+        }
       };
 
       xhr.ontimeout = function() {
         catalyst.log('User sync timeout');
+        // Call completion callback even on timeout
+        if (typeof onComplete === 'function') {
+          onComplete();
+        }
       };
 
       try {
@@ -785,6 +819,10 @@
         xhr.send(JSON.stringify(syncRequest));
       } catch (e) {
         catalyst.log('Error sending sync request:', e);
+        // Call completion callback even on exception
+        if (typeof onComplete === 'function') {
+          onComplete();
+        }
       }
 
       catalyst._userSyncComplete = true;
