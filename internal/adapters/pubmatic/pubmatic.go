@@ -269,15 +269,40 @@ func parseImpressionObject(imp *openrtb.Imp, extractWrapperExtFromImp, extractPu
 		imp.DisplayManagerVer = displayManagerVer
 	}
 
-	// Parse impression extension
-	var bidderExt ExtImpBidderPubmatic
-	if err := json.Unmarshal(imp.Ext, &bidderExt); err != nil {
+	// Parse impression extension - extract pubmatic params from imp.ext.pubmatic
+	var extMap map[string]json.RawMessage
+	if err := json.Unmarshal(imp.Ext, &extMap); err != nil {
 		return wrapExt, pubID, fmt.Errorf("failed to parse imp.ext for ImpID=%s: %w", imp.ID, err)
 	}
 
+	// Extract PubMatic-specific params from ext.pubmatic
+	pubmaticData, ok := extMap["pubmatic"]
+	if !ok || len(pubmaticData) == 0 {
+		return wrapExt, pubID, fmt.Errorf("no PubMatic parameters found in imp.ext for ImpID=%s", imp.ID)
+	}
+
 	var pubmaticExt ExtImpPubmatic
-	if err := json.Unmarshal(bidderExt.Bidder, &pubmaticExt); err != nil {
-		return wrapExt, pubID, fmt.Errorf("failed to parse imp.ext.bidder for ImpID=%s: %w", imp.ID, err)
+	if err := json.Unmarshal(pubmaticData, &pubmaticExt); err != nil {
+		return wrapExt, pubID, fmt.Errorf("failed to parse imp.ext.pubmatic for ImpID=%s: %w", imp.ID, err)
+	}
+
+	// Extract additional data from other ext keys (data, gpid, ae, skadn)
+	var bidderExt ExtImpBidderPubmatic
+	if dataRaw, ok := extMap["data"]; ok {
+		bidderExt.Data = dataRaw
+	}
+	if gpidRaw, ok := extMap["gpid"]; ok {
+		var gpid string
+		json.Unmarshal(gpidRaw, &gpid)
+		bidderExt.GPID = gpid
+	}
+	if aeRaw, ok := extMap["ae"]; ok {
+		var ae int
+		json.Unmarshal(aeRaw, &ae)
+		bidderExt.AE = ae
+	}
+	if skadnRaw, ok := extMap["skadn"]; ok {
+		bidderExt.SKAdNetwork = skadnRaw
 	}
 
 	// Extract publisher ID
@@ -317,42 +342,42 @@ func parseImpressionObject(imp *openrtb.Imp, extractWrapperExtFromImp, extractPu
 		}
 	}
 
-	// Build impression extension map
-	extMap := make(map[string]interface{})
+	// Build impression extension map for PubMatic request
+	finalExtMap := make(map[string]interface{})
 
 	// Add keywords
 	if pubmaticExt.Keywords != nil && len(pubmaticExt.Keywords) != 0 {
-		addKeywordsToExt(pubmaticExt.Keywords, extMap)
+		addKeywordsToExt(pubmaticExt.Keywords, finalExtMap)
 	}
 
 	// Add dctr and pmZoneId
 	if pubmaticExt.Dctr != "" {
-		extMap[DctrKeyName] = pubmaticExt.Dctr
+		finalExtMap[DctrKeyName] = pubmaticExt.Dctr
 	}
 	if pubmaticExt.PmZoneID != "" {
-		extMap[PmZoneIDKeyName] = pubmaticExt.PmZoneID
+		finalExtMap[PmZoneIDKeyName] = pubmaticExt.PmZoneID
 	}
 
 	// Add first-party data
 	if len(bidderExt.Data) > 0 {
-		populateFirstPartyDataImpAttributes(bidderExt.Data, extMap)
+		populateFirstPartyDataImpAttributes(bidderExt.Data, finalExtMap)
 	}
 
 	// Add other extensions
 	if bidderExt.AE != 0 {
-		extMap[AEKey] = bidderExt.AE
+		finalExtMap[AEKey] = bidderExt.AE
 	}
 	if bidderExt.GPID != "" {
-		extMap[GPIDKey] = bidderExt.GPID
+		finalExtMap[GPIDKey] = bidderExt.GPID
 	}
 	if bidderExt.SKAdNetwork != nil {
-		extMap[SKAdNetworkKey] = bidderExt.SKAdNetwork
+		finalExtMap[SKAdNetworkKey] = bidderExt.SKAdNetwork
 	}
 
 	// Set final extension
 	imp.Ext = nil
-	if len(extMap) > 0 {
-		ext, err := json.Marshal(extMap)
+	if len(finalExtMap) > 0 {
+		ext, err := json.Marshal(finalExtMap)
 		if err == nil {
 			imp.Ext = ext
 		}
