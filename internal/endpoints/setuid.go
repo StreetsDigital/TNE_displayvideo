@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/thenexusengine/tne_springwire/internal/storage"
 	"github.com/thenexusengine/tne_springwire/internal/usersync"
 	"github.com/thenexusengine/tne_springwire/pkg/logger"
 )
@@ -11,16 +12,18 @@ import (
 // SetUIDHandler handles the /setuid endpoint for storing bidder user IDs
 type SetUIDHandler struct {
 	validBidders map[string]bool
+	idGraphStore *storage.IDGraphStore
 }
 
 // NewSetUIDHandler creates a new setuid handler
-func NewSetUIDHandler(validBidders []string) *SetUIDHandler {
+func NewSetUIDHandler(validBidders []string, idGraphStore *storage.IDGraphStore) *SetUIDHandler {
 	bidderMap := make(map[string]bool)
 	for _, b := range validBidders {
 		bidderMap[strings.ToLower(b)] = true
 	}
 	return &SetUIDHandler{
 		validBidders: bidderMap,
+		idGraphStore: idGraphStore,
 	}
 }
 
@@ -88,6 +91,51 @@ func (h *SetUIDHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			Int("uid_length", len(uid)).
 			Int("total_syncs", cookie.SyncCount()).
 			Msg("Stored UID")
+
+		// Record ID graph mapping (GDPR-compliant)
+		// Only record if:
+		// 1. ID graph store is available
+		// 2. FPID exists in cookie
+		// 3. Either GDPR doesn't apply OR valid consent is provided
+		if h.idGraphStore != nil && cookie.GetFPID() != "" {
+			// Check GDPR compliance
+			hasConsent := gdpr != "1" || (gdprConsent != "" && len(gdprConsent) >= 20)
+
+			if hasConsent {
+				metadata := &storage.MappingMetadata{
+					ConsentGiven: hasConsent,
+					GDPRApplies:  gdpr == "1",
+					IPAddress:    r.RemoteAddr,
+					UserAgent:    r.UserAgent(),
+				}
+
+				if err := h.idGraphStore.RecordMapping(
+					r.Context(),
+					cookie.GetFPID(),
+					bidderLower,
+					uid,
+					metadata,
+				); err != nil {
+					logger.Log.Warn().
+						Err(err).
+						Str("fpid", cookie.GetFPID()).
+						Str("bidder", bidderLower).
+						Msg("Failed to store ID graph mapping")
+				} else {
+					logger.Log.Debug().
+						Str("fpid", cookie.GetFPID()).
+						Str("bidder", bidderLower).
+						Str("uid", uid).
+						Bool("gdpr_applies", gdpr == "1").
+						Msg("ID graph mapping recorded with valid consent")
+				}
+			} else {
+				logger.Log.Warn().
+					Str("fpid", cookie.GetFPID()).
+					Str("bidder", bidderLower).
+					Msg("ID graph mapping blocked - GDPR applies but no valid TCF consent")
+			}
+		}
 	}
 
 	// Set the updated cookie

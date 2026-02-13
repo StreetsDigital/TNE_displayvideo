@@ -36,6 +36,93 @@
   catalyst._userSyncComplete = false;
   catalyst._syncedBidders = [];
 
+  // First-Party ID Manager
+  catalyst._fpidManager = {
+    cookieName: 'uids',  // Store in existing uids cookie
+    fpidKey: 'fpid',
+    expiryDays: 365,
+
+    // Check if we have consent to generate/use FPID
+    // GDPR compliance: Only allow FPID if consent is available or GDPR doesn't apply
+    hasConsent: function() {
+      // If no TCF API, assume GDPR doesn't apply (non-EU traffic)
+      if (!window.__tcfapi) {
+        return true;
+      }
+
+      // Check for cached consent data
+      var hasValidConsent = false;
+      var checkComplete = false;
+
+      try {
+        window.__tcfapi('getTCData', 2, function(tcData, success) {
+          if (success && tcData) {
+            // GDPR doesn't apply - allow FPID
+            if (!tcData.gdprApplies) {
+              hasValidConsent = true;
+            }
+            // GDPR applies - check for valid consent string
+            else if (tcData.tcString && tcData.tcString.length >= 20) {
+              hasValidConsent = true;
+            }
+          }
+          checkComplete = true;
+        });
+      } catch (e) {
+        catalyst.log('Error checking GDPR consent for FPID:', e);
+        // On error, be conservative and deny FPID
+        checkComplete = true;
+      }
+
+      // If TCF API is synchronous and completed, return result
+      // Otherwise return false (no consent) to be safe
+      return checkComplete ? hasValidConsent : false;
+    },
+
+    // Generate new FPID
+    generate: function() {
+      var timestamp = Date.now();
+      var random = Math.random().toString(36).substr(2, 12);
+      return 'fpi_' + timestamp + '_' + random;
+    },
+
+    // Get FPID from cookie (parse uids cookie JSON)
+    get: function() {
+      var uids = catalyst._getCookie(this.cookieName);
+      if (uids) {
+        try {
+          var decoded = atob(uids);
+          var data = JSON.parse(decoded);
+          return data.fpid || null;
+        } catch (e) {
+          catalyst.log('Failed to parse fpid from cookie:', e);
+          return null;
+        }
+      }
+      return null;
+    },
+
+    // Generate or retrieve existing FPID (respects GDPR consent)
+    getOrCreate: function() {
+      // Always return existing FPID if available
+      var fpid = this.get();
+      if (fpid) {
+        catalyst.log('Retrieved existing FPID:', fpid);
+        return fpid;
+      }
+
+      // Only generate new FPID if we have consent
+      if (!this.hasConsent()) {
+        catalyst.log('FPID generation blocked - GDPR applies but no valid TCF consent');
+        return null;
+      }
+
+      fpid = this.generate();
+      catalyst.log('Generated new FPID:', fpid);
+      return fpid;
+    }
+  };
+
   /**
    * Initialize Catalyst SDK
    * @param {Object} config - Configuration object
@@ -197,6 +284,16 @@
       bidRequest.user = bidRequest.user || {};
       bidRequest.user.userIds = userIds;
       catalyst.log('Including user IDs for bidders:', Object.keys(userIds).join(', '));
+    }
+
+    // Include FPID (only if consent is available)
+    var fpid = catalyst._fpidManager.getOrCreate();
+    if (fpid) {
+      bidRequest.user = bidRequest.user || {};
+      bidRequest.user.fpid = fpid;
+      catalyst.log('Including FPID:', fpid);
+    } else {
+      catalyst.log('FPID not included - consent not available');
     }
 
     // Collect ORTB2 data from Prebid.js
@@ -640,6 +737,15 @@
       us_privacy: '',
       limit: catalyst._config.userSync.maxSyncs
     };
+
+    // Include FPID only if consent is available
+    var fpid = catalyst._fpidManager.getOrCreate();
+    if (fpid) {
+      syncRequest.fpid = fpid;
+      catalyst.log('Including FPID in cookie sync:', fpid);
+    } else {
+      catalyst.log('FPID not included in cookie sync - consent not available');
+    }
 
     // Function to send cookie sync request
     var sendSyncRequest = function() {

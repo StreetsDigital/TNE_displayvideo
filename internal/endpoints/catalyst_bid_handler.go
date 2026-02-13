@@ -130,6 +130,7 @@ type MAIPage struct {
 
 // MAIUser represents user/privacy info
 type MAIUser struct {
+	FPID           string                   `json:"fpid,omitempty"`           // First-party identifier
 	ConsentGiven   bool                     `json:"consentGiven,omitempty"`
 	ConsentString  string                   `json:"consentString,omitempty"`  // TCFv2 consent string
 	GDPRApplies    bool                     `json:"gdprApplies,omitempty"`
@@ -574,6 +575,14 @@ func (h *CatalystBidHandler) convertToOpenRTB(r *http.Request, maiBid *MAIBidReq
 	if len(userIDs) > 0 || maiBid.User != nil {
 		user = &openrtb.User{}
 
+		// Set FPID as OpenRTB user.id (first-party identifier)
+		if maiBid.User != nil && maiBid.User.FPID != "" {
+			user.ID = maiBid.User.FPID
+			logger.Log.Debug().
+				Str("fpid", maiBid.User.FPID).
+				Msg("Including FPID in bid request as user.id")
+		}
+
 		// MODERN: Store all bidder IDs in user.ext.eids (OpenRTB 2.6+ standard)
 		// This provides transparency about ID sources and supports multiple ID types
 		if len(userIDs) > 0 {
@@ -620,6 +629,7 @@ func (h *CatalystBidHandler) convertToOpenRTB(r *http.Request, maiBid *MAIBidReq
 			user.Ext = extJSON
 
 			logger.Log.Info().
+				Str("fpid", user.ID).
 				Int("user_ids", len(userIDs)).
 				Strs("bidders", getBidderKeys(userIDs)).
 				Msg("Populated user IDs from cookie sync")

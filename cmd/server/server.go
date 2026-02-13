@@ -39,6 +39,7 @@ type Server struct {
 	rateLimiter       *middleware.RateLimiter
 	db                *storage.BidderStore
 	publisher         *storage.PublisherStore
+	idGraphStore      *storage.IDGraphStore
 	redisClient       *redis.Client
 	currencyConverter *currency.Converter
 }
@@ -132,6 +133,8 @@ func (s *Server) initDatabase() error {
 
 	s.db = storage.NewBidderStore(dbConn)
 	s.publisher = storage.NewPublisherStore(dbConn)
+	s.idGraphStore = storage.NewIDGraphStore(dbConn)
+	log.Info().Msg("ID graph store initialized")
 
 	// Load and log bidders from database
 	bidders, err := s.db.ListActive(ctx)
@@ -282,7 +285,7 @@ func (s *Server) initHandlers() {
 	// Cookie sync handlers
 	cookieSyncConfig := endpoints.DefaultCookieSyncConfig(s.config.HostURL)
 	cookieSyncHandler := endpoints.NewCookieSyncHandler(cookieSyncConfig)
-	setuidHandler := endpoints.NewSetUIDHandler(cookieSyncHandler.ListBidders())
+	setuidHandler := endpoints.NewSetUIDHandler(cookieSyncHandler.ListBidders(), s.idGraphStore)
 	optoutHandler := endpoints.NewOptOutHandler()
 
 	log.Info().
