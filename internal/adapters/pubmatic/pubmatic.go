@@ -114,6 +114,8 @@ func (a *Adapter) MakeRequests(request *openrtb.BidRequest, extraInfo *adapters.
 	// Set publisher ID on Site or App
 	if request.Site != nil {
 		siteCopy := *request.Site
+		// Clear internal site.id - PubMatic doesn't need our internal account ID
+		siteCopy.ID = ""
 		if siteCopy.Publisher != nil {
 			publisherCopy := *siteCopy.Publisher
 			publisherCopy.ID = pubID
@@ -124,6 +126,8 @@ func (a *Adapter) MakeRequests(request *openrtb.BidRequest, extraInfo *adapters.
 		request.Site = &siteCopy
 	} else if request.App != nil {
 		appCopy := *request.App
+		// Clear internal app.id - PubMatic doesn't need our internal account ID
+		appCopy.ID = ""
 		if appCopy.Publisher != nil {
 			publisherCopy := *appCopy.Publisher
 			publisherCopy.ID = pubID
