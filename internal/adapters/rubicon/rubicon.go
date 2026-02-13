@@ -126,6 +126,12 @@ func (a *Adapter) MakeRequests(request *openrtb.BidRequest, extraInfo *adapters.
 			if siteCopy.Publisher == nil {
 				siteCopy.Publisher = &openrtb.Publisher{}
 			}
+
+			// CRITICAL: Set publisher.id to Rubicon's account ID
+			// Rubicon checks this field BEFORE ext.rp.account_id
+			accountIDStr := fmt.Sprintf("%d", rubiconParams.AccountID)
+			siteCopy.Publisher.ID = accountIDStr
+
 			pubExt := rubiconPubExt{
 				RP: rubiconPubExtRP{
 					AccountID: rubiconParams.AccountID,
