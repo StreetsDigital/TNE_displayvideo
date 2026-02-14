@@ -196,19 +196,38 @@ UPDATE bidders_new
 SET param_schema = '{
   "$schema": "http://json-schema.org/draft-04/schema#",
   "title": "Sovrn Adapter Params",
+  "description": "A schema which validates params accepted by the Sovrn adapter",
   "type": "object",
   "properties": {
     "tagid": {
       "type": "string",
-      "description": "Sovrn tag ID"
+      "description": "An ID which identifies the sovrn ad tag"
+    },
+    "tagId": {
+      "type": "string",
+      "description": "An ID which identifies the sovrn ad tag (DEPRECATED, use tagid instead)"
     },
     "bidfloor": {
-      "type": "number",
-      "minimum": 0,
-      "description": "Bid floor price"
+      "anyOf": [
+        {
+          "type": "number",
+          "description": "The minimum acceptable bid, in CPM, using US Dollars"
+        },
+        {
+          "type": "string",
+          "description": "The minimum acceptable bid, in CPM, using US Dollars (as a string)"
+        }
+      ]
+    },
+    "adunitcode": {
+      "type": "string",
+      "description": "The string which identifies Ad Unit"
     }
   },
-  "required": ["tagid"]
+  "oneOf": [
+    {"required": ["tagid"]},
+    {"required": ["tagId"]}
+  ]
 }'::jsonb
 WHERE code = 'sovrn';
 
