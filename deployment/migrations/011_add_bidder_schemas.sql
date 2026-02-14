@@ -98,14 +98,22 @@ UPDATE bidders_new
 SET param_schema = '{
   "$schema": "http://json-schema.org/draft-04/schema#",
   "title": "Kargo Adapter Params",
+  "description": "A schema which validates params accepted by the Kargo adapter",
   "type": "object",
   "properties": {
     "placementId": {
       "type": "string",
-      "description": "Kargo placement ID"
+      "description": "An ID which identifies the adslot placement. Equivalent to the id of target inventory, ad unit code, or placement id"
+    },
+    "adSlotID": {
+      "type": "string",
+      "description": "[Deprecated: Use placementId] An ID which identifies the adslot placement. Equivalent to the id of target inventory, ad unit code, or placement id"
     }
   },
-  "required": ["placementId"]
+  "oneOf": [
+    {"required": ["placementId"]},
+    {"required": ["adSlotID"]}
+  ]
 }'::jsonb
 WHERE code = 'kargo';
 
