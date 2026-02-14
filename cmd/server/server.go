@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"net/http"
+	"net/http/pprof"
 	"time"
 
 	"github.com/thenexusengine/tne_springwire/internal/adapters"
@@ -388,6 +389,18 @@ func (s *Server) initHandlers() {
 
 	log.Info().Msg("Admin tag generator registered: /admin/adtag/generator")
 
+	// Version endpoint (similar to Prebid Server)
+	mux.HandleFunc("/version", versionHandler)
+
+	// pprof debugging endpoints (similar to Prebid Server)
+	mux.HandleFunc("/debug/pprof/", pprof.Index)
+	mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
+	mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
+	mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
+	mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
+
+	log.Info().Msg("pprof debugging endpoints registered: /debug/pprof/*")
+
 	// Build middleware chain
 	handler := s.buildHandler(mux)
 
@@ -745,6 +758,19 @@ func readyHandler(redisClient *redis.Client, publisherStore *storage.PublisherSt
 			logger.Log.Error().Err(err).Msg("failed to encode readiness response")
 		}
 	})
+}
+
+// versionHandler returns version information
+func versionHandler(w http.ResponseWriter, r *http.Request) {
+	version := map[string]string{
+		"version":   "1.0.0",
+		"timestamp": time.Now().UTC().Format(time.RFC3339),
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(version); err != nil {
+		logger.Log.Error().Err(err).Msg("failed to encode version response")
+	}
 }
 
 // generateRequestID creates a unique request ID
