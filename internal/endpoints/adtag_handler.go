@@ -460,7 +460,26 @@ func extractDomain(urlStr string) string {
 	urlStr = strings.TrimPrefix(urlStr, "https://")
 	parts := strings.Split(urlStr, "/")
 	if len(parts) > 0 {
-		return strings.Split(parts[0], ":")[0]
+		domain := strings.Split(parts[0], ":")[0]
+		// Strip subdomain (e.g., "dev.totalprosports.com" -> "totalprosports.com")
+		return stripSubdomain(domain)
 	}
 	return ""
+}
+
+// stripSubdomain removes subdomains, keeping only the root domain
+// Examples: "dev.totalprosports.com" -> "totalprosports.com"
+//           "www.example.com" -> "example.com"
+//           "totalprosports.com" -> "totalprosports.com"
+func stripSubdomain(domain string) string {
+	parts := strings.Split(domain, ".")
+
+	// If it's already a root domain (e.g., "com" or "example.com"), return as-is
+	if len(parts) <= 2 {
+		return domain
+	}
+
+	// Return the last two parts (root domain + TLD)
+	// e.g., ["dev", "totalprosports", "com"] -> "totalprosports.com"
+	return strings.Join(parts[len(parts)-2:], ".")
 }
