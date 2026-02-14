@@ -110,6 +110,15 @@ func (a *Adapter) MakeRequests(request *openrtb.BidRequest, extraInfo *adapters.
 		if reqCopy.Site != nil {
 			siteCopy := *reqCopy.Site
 
+			// Remove Catalyst internal IDs from Site (prevent ID leakage)
+			siteCopy.ID = "" // Clear Catalyst internal site ID
+
+			if siteCopy.Publisher != nil {
+				pubCopy := *siteCopy.Publisher
+				pubCopy.ID = "" // Clear Catalyst internal publisher ID
+				siteCopy.Publisher = &pubCopy
+			}
+
 			// Set Rubicon site extension
 			siteExt := rubiconSiteExt{
 				RP: rubiconSiteExtRP{
@@ -122,39 +131,34 @@ func (a *Adapter) MakeRequests(request *openrtb.BidRequest, extraInfo *adapters.
 				continue
 			}
 
-			// Create a deep copy of Publisher to avoid modifying the original
-			var pubCopy openrtb.Publisher
-			if siteCopy.Publisher != nil {
-				pubCopy = *siteCopy.Publisher
-			}
-			siteCopy.Publisher = &pubCopy
-
 			// CRITICAL: Set publisher.id to Rubicon's account ID
 			// Rubicon checks this field BEFORE ext.rp.account_id
-			accountIDStr := fmt.Sprintf("%d", rubiconParams.AccountID)
+			if siteCopy.Publisher != nil {
+				accountIDStr := fmt.Sprintf("%d", rubiconParams.AccountID)
 
-			logger.Log.Debug().
-				Str("adapter", "rubicon").
-				Str("before_id", siteCopy.Publisher.ID).
-				Str("setting_to", accountIDStr).
-				Msg("About to set publisher.id")
+				logger.Log.Debug().
+					Str("adapter", "rubicon").
+					Str("before_id", siteCopy.Publisher.ID).
+					Str("setting_to", accountIDStr).
+					Msg("About to set publisher.id")
 
-			siteCopy.Publisher.ID = accountIDStr
+				siteCopy.Publisher.ID = accountIDStr
 
-			logger.Log.Debug().
-				Str("adapter", "rubicon").
-				Str("after_id", siteCopy.Publisher.ID).
-				Msg("After setting publisher.id")
+				logger.Log.Debug().
+					Str("adapter", "rubicon").
+					Str("after_id", siteCopy.Publisher.ID).
+					Msg("After setting publisher.id")
 
-			pubExt := rubiconPubExt{
-				RP: rubiconPubExtRP{
-					AccountID: rubiconParams.AccountID,
-				},
-			}
-			siteCopy.Publisher.Ext, err = json.Marshal(pubExt)
-			if err != nil {
-				errors = append(errors, fmt.Errorf("failed to marshal publisher ext: %w", err))
-				continue
+				pubExt := rubiconPubExt{
+					RP: rubiconPubExtRP{
+						AccountID: rubiconParams.AccountID,
+					},
+				}
+				siteCopy.Publisher.Ext, err = json.Marshal(pubExt)
+				if err != nil {
+					errors = append(errors, fmt.Errorf("failed to marshal publisher ext: %w", err))
+					continue
+				}
 			}
 
 			reqCopy.Site = &siteCopy
