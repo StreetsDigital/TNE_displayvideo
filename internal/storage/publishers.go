@@ -641,3 +641,99 @@ func (s *PublisherStore) GetAdUnitPathFromDivID(ctx context.Context, publisherID
 
 	return adUnitPath, nil
 }
+
+// PublisherNew represents a publisher in the normalized schema
+type PublisherNew struct {
+	ID              int
+	AccountID       int
+	Domain          string
+	Name            string
+	Status          string
+	PBSAccountID    sql.NullString
+	DefaultTimeout  int
+	DefaultCurrency string
+	Notes           sql.NullString
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
+}
+
+// GetSlotBidderConfigs retrieves bidder configurations for a specific ad slot
+func (s *PublisherStore) GetSlotBidderConfigs(ctx context.Context, accountID, domain, slotPattern, deviceType string) (map[string]map[string]interface{}, error) {
+	query := `
+		SELECT
+			b.code AS bidder_code,
+			sbc.bidder_params
+		FROM slot_bidder_configs sbc
+		JOIN ad_slots s ON sbc.ad_slot_id = s.id
+		JOIN publishers_new p ON s.publisher_id = p.id
+		JOIN accounts a ON p.account_id = a.id
+		JOIN bidders_new b ON sbc.bidder_id = b.id
+		WHERE a.account_id = $1
+		  AND p.domain = $2
+		  AND s.slot_pattern = $3
+		  AND (sbc.device_type = $4 OR sbc.device_type = 'all')
+		  AND sbc.status = 'active'
+		  AND s.status = 'active'
+		  AND p.status = 'active'
+		  AND a.status = 'active'
+		  AND b.status = 'active'
+	`
+
+	rows, err := s.db.QueryContext(ctx, query, accountID, domain, slotPattern, deviceType)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query slot bidder configs: %w", err)
+	}
+	defer rows.Close()
+
+	result := make(map[string]map[string]interface{})
+
+	for rows.Next() {
+		var bidderCode string
+		var paramsJSON []byte
+
+		if err := rows.Scan(&bidderCode, &paramsJSON); err != nil {
+			return nil, fmt.Errorf("failed to scan row: %w", err)
+		}
+
+		var params map[string]interface{}
+		if err := json.Unmarshal(paramsJSON, &params); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal bidder params: %w", err)
+		}
+
+		result[bidderCode] = params
+	}
+
+	return result, nil
+}
+
+// GetByAccountID retrieves publisher information by account ID
+func (s *PublisherStore) GetByAccountID(ctx context.Context, accountID string) (*PublisherNew, error) {
+	query := `
+		SELECT
+			p.id, p.account_id, p.domain, p.name, p.status,
+			p.pbs_account_id, p.default_timeout_ms, p.default_currency,
+			p.notes, p.created_at, p.updated_at
+		FROM publishers_new p
+		JOIN accounts a ON p.account_id = a.id
+		WHERE a.account_id = $1
+		  AND p.status = 'active'
+		  AND a.status = 'active'
+		LIMIT 1
+	`
+
+	var pub PublisherNew
+	err := s.db.QueryRowContext(ctx, query, accountID).Scan(
+		&pub.ID, &pub.AccountID, &pub.Domain, &pub.Name, &pub.Status,
+		&pub.PBSAccountID, &pub.DefaultTimeout, &pub.DefaultCurrency,
+		&pub.Notes, &pub.CreatedAt, &pub.UpdatedAt,
+	)
+
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to query publisher: %w", err)
+	}
+
+	return &pub, nil
+}

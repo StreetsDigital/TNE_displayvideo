@@ -430,39 +430,76 @@ func (h *CatalystBidHandler) convertToOpenRTB(r *http.Request, maiBid *MAIBidReq
 		// List of bidders to look up
 		bidders := []string{"rubicon", "kargo", "sovrn", "pubmatic", "triplelift"}
 
-		// OPTIMIZED: Batch lookup all bidder configs in a single database query (was 5x3=15 queries before!)
+		// Detect device type from User-Agent for device-specific bidder configs
+		deviceType := "desktop" // Default to desktop
+		if maiBid.Device != nil && maiBid.Device.UserAgent != "" {
+			deviceType = detectDeviceType(maiBid.Device.UserAgent)
+		}
+
+		// Build slot pattern for database lookup (e.g., "totalprosports.com/billboard")
+		slotPattern := ""
+		if domain != "" && slot.DivID != "" {
+			slotPattern = fmt.Sprintf("%s/%s", domain, slot.DivID)
+		}
+
+		// Query new normalized schema: accounts → publishers → ad_slots → slot_bidder_configs
 		var allConfigs map[string]map[string]interface{}
 		var err error
-		if h.publisherStore != nil {
-			allConfigs, err = h.publisherStore.GetAllBidderConfigsHierarchical(
+		if h.publisherStore != nil && slotPattern != "" {
+			allConfigs, err = h.publisherStore.GetSlotBidderConfigs(
 				r.Context(),
-				maiBid.AccountID,
-				domain,
-				adUnitPath, // Resolved from adUnitPath or divId mapping
-				bidders,
+				maiBid.AccountID, // CATALYST internal account ID (e.g., '12345')
+				domain,           // Publisher domain (e.g., 'totalprosports.com')
+				slotPattern,      // Ad slot pattern (e.g., 'totalprosports.com/billboard')
+				deviceType,       // Device type ('desktop' or 'mobile')
 			)
 			if err != nil {
 				logger.Log.Error().
 					Err(err).
-					Str("publisher", maiBid.AccountID).
+					Str("account_id", maiBid.AccountID).
 					Str("domain", domain).
-					Str("ad_unit", adUnitPath).
+					Str("slot_pattern", slotPattern).
+					Str("device_type", deviceType).
 					Str("error_type", fmt.Sprintf("%T", err)).
 					Str("error_msg", err.Error()).
-					Msg("❌ Database error looking up bidder configs")
+					Msg("❌ Database error looking up slot bidder configs")
 				allConfigs = make(map[string]map[string]interface{})
 			} else {
 				logger.Log.Info().
-					Str("ad_unit", adUnitPath).
+					Str("slot_pattern", slotPattern).
+					Str("device_type", deviceType).
 					Strs("bidder_names", getConfiguredBidders(allConfigs)).
 					Int("bidders_configured", len(allConfigs)).
-					Str("publisher", maiBid.AccountID).
+					Str("account_id", maiBid.AccountID).
 					Str("domain", domain).
 					Interface("full_config", allConfigs).
-					Msg("✓ Injected bidder parameters using hierarchical config")
+					Msg("✓ Loaded bidder configs from normalized schema (account → publisher → slot)")
 			}
 		} else {
-			allConfigs = make(map[string]map[string]interface{})
+			// Fallback: Try legacy hierarchical lookup if slot pattern unavailable
+			if h.publisherStore != nil && adUnitPath != "" {
+				allConfigs, err = h.publisherStore.GetAllBidderConfigsHierarchical(
+					r.Context(),
+					maiBid.AccountID,
+					domain,
+					adUnitPath,
+					bidders,
+				)
+				if err != nil {
+					logger.Log.Warn().
+						Err(err).
+						Str("account_id", maiBid.AccountID).
+						Msg("⚠️  Legacy hierarchical config lookup failed - using fallback")
+					allConfigs = make(map[string]map[string]interface{})
+				}
+			} else {
+				logger.Log.Warn().
+					Str("account_id", maiBid.AccountID).
+					Str("domain", domain).
+					Str("div_id", slot.DivID).
+					Msg("⚠️  Missing slot pattern - cannot query bidder configs")
+				allConfigs = make(map[string]map[string]interface{})
+			}
 		}
 
 		// Now populate impExt with configs
@@ -525,9 +562,9 @@ func (h *CatalystBidHandler) convertToOpenRTB(r *http.Request, maiBid *MAIBidReq
 	}
 
 	// Build site
-	site := &openrtb.Site{
-		ID: maiBid.AccountID,
-	}
+	// NOTE: We intentionally leave site.id EMPTY to prevent leaking CATALYST's
+	// internal accountId ('12345') to SSPs. Each adapter sets SSP-specific IDs.
+	site := &openrtb.Site{}
 
 	if maiBid.Page != nil {
 		site.Domain = maiBid.Page.Domain
@@ -546,12 +583,11 @@ func (h *CatalystBidHandler) convertToOpenRTB(r *http.Request, maiBid *MAIBidReq
 		}
 	}
 
-	// Add publisher object (OpenRTB 2.6 requirement for brand safety and publisher identification)
-	site.Publisher = &openrtb.Publisher{
-		ID: maiBid.AccountID,
-	}
+	// NOTE: We intentionally leave publisher.id EMPTY to prevent leaking CATALYST's
+	// internal accountId. Adapters set SSP-specific publisher IDs from bidder configs.
+	site.Publisher = &openrtb.Publisher{}
 
-	// Try to get publisher name from database
+	// Get publisher name from database for brand safety
 	if h.publisherStore != nil {
 		if pub, err := h.publisherStore.GetByPublisherID(r.Context(), maiBid.AccountID); err == nil && pub != nil {
 			if publisher, ok := pub.(*storage.Publisher); ok && publisher.Name != "" {
@@ -1004,4 +1040,30 @@ func getConfiguredBidders(configs map[string]map[string]interface{}) []string {
 		keys = append(keys, k)
 	}
 	return keys
+}
+
+// detectDeviceType determines device type from User-Agent string
+// Returns "mobile" for mobile devices, "desktop" otherwise
+func detectDeviceType(userAgent string) string {
+	if userAgent == "" {
+		return "desktop" // Default to desktop if no UA
+	}
+
+	// Normalize to lowercase for case-insensitive matching
+	ua := strings.ToLower(userAgent)
+
+	// Mobile device indicators
+	mobileIndicators := []string{
+		"mobile", "android", "iphone", "ipad", "ipod",
+		"blackberry", "windows phone", "webos", "opera mini",
+		"opera mobi", "kindle", "silk", "palm", "symbian",
+	}
+
+	for _, indicator := range mobileIndicators {
+		if strings.Contains(ua, indicator) {
+			return "mobile"
+		}
+	}
+
+	return "desktop"
 }

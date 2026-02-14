@@ -36,10 +36,24 @@ func New(endpoint string) *Adapter {
 
 func (a *Adapter) MakeRequests(request *openrtb.BidRequest, extraInfo *adapters.ExtraRequestInfo) ([]*adapters.RequestData, []error) {
 	var errs []error
-	validImps := make([]openrtb.Imp, 0, len(request.Imp))
+	requestCopy := *request
+
+	// Remove Catalyst internal IDs from Site (prevent ID leakage)
+	if requestCopy.Site != nil {
+		siteCopy := *requestCopy.Site
+		siteCopy.ID = ""
+		if siteCopy.Publisher != nil {
+			pubCopy := *siteCopy.Publisher
+			pubCopy.ID = ""
+			siteCopy.Publisher = &pubCopy
+		}
+		requestCopy.Site = &siteCopy
+	}
+
+	validImps := make([]openrtb.Imp, 0, len(requestCopy.Imp))
 
 	// Process each impression to extract Sovrn parameters
-	for _, imp := range request.Imp {
+	for _, imp := range requestCopy.Imp {
 		sovrnParams, err := extractSovrnParams(imp.Ext)
 		if err != nil {
 			errs = append(errs, fmt.Errorf("failed to extract Sovrn params for imp %s: %w", imp.ID, err))
@@ -79,7 +93,6 @@ func (a *Adapter) MakeRequests(request *openrtb.BidRequest, extraInfo *adapters.
 	}
 
 	// Update request with valid impressions
-	requestCopy := *request
 	requestCopy.Imp = validImps
 
 	body, err := json.Marshal(requestCopy)
@@ -91,18 +104,18 @@ func (a *Adapter) MakeRequests(request *openrtb.BidRequest, extraInfo *adapters.
 	headers := http.Header{}
 	headers.Set("Content-Type", "application/json")
 
-	if request.Device != nil {
-		addHeaderIfNonEmpty(headers, "User-Agent", request.Device.UA)
-		addHeaderIfNonEmpty(headers, "X-Forwarded-For", request.Device.IP)
-		addHeaderIfNonEmpty(headers, "Accept-Language", request.Device.Language)
-		if request.Device.DNT != nil {
-			headers.Set("DNT", strconv.Itoa(*request.Device.DNT))
+	if requestCopy.Device != nil {
+		addHeaderIfNonEmpty(headers, "User-Agent", requestCopy.Device.UA)
+		addHeaderIfNonEmpty(headers, "X-Forwarded-For", requestCopy.Device.IP)
+		addHeaderIfNonEmpty(headers, "Accept-Language", requestCopy.Device.Language)
+		if requestCopy.Device.DNT != nil {
+			headers.Set("DNT", strconv.Itoa(*requestCopy.Device.DNT))
 		}
 	}
 
 	// Add ljt_reader cookie if we have a BuyerUID
-	if request.User != nil {
-		userID := strings.TrimSpace(request.User.BuyerUID)
+	if requestCopy.User != nil {
+		userID := strings.TrimSpace(requestCopy.User.BuyerUID)
 		if userID != "" {
 			headers.Add("Cookie", fmt.Sprintf("ljt_reader=%s", userID))
 		}

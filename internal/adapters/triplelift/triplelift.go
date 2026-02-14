@@ -27,7 +27,21 @@ func New(endpoint string) *Adapter {
 }
 
 func (a *Adapter) MakeRequests(request *openrtb.BidRequest, extraInfo *adapters.ExtraRequestInfo) ([]*adapters.RequestData, []error) {
-	requestBody, err := json.Marshal(request)
+	requestCopy := *request
+
+	// Remove Catalyst internal IDs from Site (prevent ID leakage)
+	if requestCopy.Site != nil {
+		siteCopy := *requestCopy.Site
+		siteCopy.ID = ""
+		if siteCopy.Publisher != nil {
+			pubCopy := *siteCopy.Publisher
+			pubCopy.ID = ""
+			siteCopy.Publisher = &pubCopy
+		}
+		requestCopy.Site = &siteCopy
+	}
+
+	requestBody, err := json.Marshal(requestCopy)
 	if err != nil {
 		return nil, []error{fmt.Errorf("failed to marshal request: %w", err)}
 	}
