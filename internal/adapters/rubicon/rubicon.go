@@ -2,9 +2,11 @@
 package rubicon
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 
 	"github.com/thenexusengine/tne_springwire/internal/adapters"
 	"github.com/thenexusengine/tne_springwire/internal/openrtb"
@@ -57,6 +59,8 @@ type rubiconPubExtRP struct {
 // Adapter implements the Rubicon bidder
 type Adapter struct {
 	endpoint string
+	xapiUser string
+	xapiPass string
 }
 
 // New creates a new Rubicon adapter
@@ -64,7 +68,24 @@ func New(endpoint string) *Adapter {
 	if endpoint == "" {
 		endpoint = defaultEndpoint
 	}
-	return &Adapter{endpoint: endpoint}
+
+	// Load XAPI credentials from environment
+	// These are required for Rubicon authentication
+	xapiUser := os.Getenv("RUBICON_XAPI_USER")
+	xapiPass := os.Getenv("RUBICON_XAPI_PASS")
+
+	if xapiUser == "" || xapiPass == "" {
+		logger.Log.Warn().
+			Bool("has_user", xapiUser != "").
+			Bool("has_pass", xapiPass != "").
+			Msg("Rubicon XAPI credentials not configured - requests may be rejected")
+	}
+
+	return &Adapter{
+		endpoint: endpoint,
+		xapiUser: xapiUser,
+		xapiPass: xapiPass,
+	}
 }
 
 // MakeRequests builds HTTP requests for Rubicon
@@ -173,6 +194,12 @@ func (a *Adapter) MakeRequests(request *openrtb.BidRequest, extraInfo *adapters.
 		headers := http.Header{}
 		headers.Set("Content-Type", "application/json;charset=utf-8")
 		headers.Set("Accept", "application/json")
+
+		// Add XAPI basic authentication
+		if a.xapiUser != "" && a.xapiPass != "" {
+			auth := base64.StdEncoding.EncodeToString([]byte(a.xapiUser + ":" + a.xapiPass))
+			headers.Set("Authorization", "Basic "+auth)
+		}
 
 		requests = append(requests, &adapters.RequestData{
 			Method:  "POST",

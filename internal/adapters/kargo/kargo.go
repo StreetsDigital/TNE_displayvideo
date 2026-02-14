@@ -141,7 +141,8 @@ func (a *Adapter) MakeBids(request *openrtb.BidRequest, responseData *adapters.R
 	for _, seatBid := range bidResp.SeatBid {
 		for i := range seatBid.Bid {
 			bid := &seatBid.Bid[i]
-			bidType := adapters.GetBidTypeFromMap(bid, impMap)
+			// Check Kargo's extension first for authoritative media type
+			bidType := getMediaTypeForBid(bid, impMap)
 
 			response.Bids = append(response.Bids, &adapters.TypedBid{
 				Bid:     bid,
@@ -151,6 +152,30 @@ func (a *Adapter) MakeBids(request *openrtb.BidRequest, responseData *adapters.R
 	}
 
 	return response, nil
+}
+
+// getMediaTypeForBid determines bid type by checking Kargo's extension first
+// Falls back to impression-based detection if extension not present
+func getMediaTypeForBid(bid *openrtb.Bid, impMap map[string]*openrtb.Imp) adapters.BidType {
+	// Check Kargo's extension first (authoritative signal)
+	if bid.Ext != nil {
+		var kargoExt struct {
+			MediaType string `json:"mediaType"`
+		}
+		if err := json.Unmarshal(bid.Ext, &kargoExt); err == nil && kargoExt.MediaType != "" {
+			switch kargoExt.MediaType {
+			case "video":
+				return adapters.BidTypeVideo
+			case "native":
+				return adapters.BidTypeNative
+			case "banner":
+				return adapters.BidTypeBanner
+			}
+		}
+	}
+
+	// Fallback to impression-based detection
+	return adapters.GetBidTypeFromMap(bid, impMap)
 }
 
 // Info returns bidder information

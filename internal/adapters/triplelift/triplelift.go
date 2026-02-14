@@ -28,6 +28,8 @@ func New(endpoint string) *Adapter {
 
 func (a *Adapter) MakeRequests(request *openrtb.BidRequest, extraInfo *adapters.ExtraRequestInfo) ([]*adapters.RequestData, []error) {
 	requestCopy := *request
+	var errs []error
+	var validImps []openrtb.Imp
 
 	// Remove Catalyst internal IDs from Site (prevent ID leakage)
 	if requestCopy.Site != nil {
@@ -41,9 +43,82 @@ func (a *Adapter) MakeRequests(request *openrtb.BidRequest, extraInfo *adapters.
 		requestCopy.Site = &siteCopy
 	}
 
+	// Remove Catalyst internal IDs from App (if present)
+	if requestCopy.App != nil {
+		appCopy := *requestCopy.App
+		appCopy.ID = ""
+		if appCopy.Publisher != nil {
+			pubCopy := *appCopy.Publisher
+			pubCopy.ID = ""
+			appCopy.Publisher = &pubCopy
+		}
+		requestCopy.App = &appCopy
+	}
+
+	// Process each impression - extract TripleLift parameters
+	for _, imp := range requestCopy.Imp {
+		var tripleliftExt struct {
+			InventoryCode string  `json:"inventoryCode"`
+			Floor         float64 `json:"floor,omitempty"`
+		}
+
+		// Extract TripleLift params from imp.ext.triplelift
+		if imp.Ext != nil {
+			var impExt struct {
+				Triplelift json.RawMessage `json:"triplelift"`
+			}
+			if err := json.Unmarshal(imp.Ext, &impExt); err != nil {
+				errs = append(errs, fmt.Errorf("failed to parse imp.ext for imp %s: %w", imp.ID, err))
+				continue
+			}
+			if len(impExt.Triplelift) > 0 {
+				if err := json.Unmarshal(impExt.Triplelift, &tripleliftExt); err != nil {
+					errs = append(errs, fmt.Errorf("failed to parse triplelift params for imp %s: %w", imp.ID, err))
+					continue
+				}
+			}
+		}
+
+		// Validate required parameter
+		if tripleliftExt.InventoryCode == "" {
+			errs = append(errs, fmt.Errorf("imp %s missing required inventoryCode", imp.ID))
+			continue
+		}
+
+		// Validate impression has Banner or Native
+		if imp.Banner == nil && imp.Native == nil {
+			errs = append(errs, fmt.Errorf("imp %s must have Banner or Native", imp.ID))
+			continue
+		}
+
+		// Create impression copy and set TripleLift-specific fields
+		impCopy := imp
+		impCopy.TagID = tripleliftExt.InventoryCode
+
+		// Set bid floor if provided
+		if tripleliftExt.Floor > 0 {
+			impCopy.BidFloor = tripleliftExt.Floor
+			if impCopy.BidFloorCur == "" {
+				impCopy.BidFloorCur = "USD"
+			}
+		}
+
+		validImps = append(validImps, impCopy)
+	}
+
+	// Return errors if no valid impressions
+	if len(validImps) == 0 {
+		if len(errs) > 0 {
+			return nil, errs
+		}
+		return nil, []error{fmt.Errorf("no valid impressions")}
+	}
+
+	requestCopy.Imp = validImps
+
 	requestBody, err := json.Marshal(requestCopy)
 	if err != nil {
-		return nil, []error{fmt.Errorf("failed to marshal request: %w", err)}
+		return nil, append(errs, fmt.Errorf("failed to marshal request: %w", err))
 	}
 
 	headers := http.Header{}
@@ -52,7 +127,7 @@ func (a *Adapter) MakeRequests(request *openrtb.BidRequest, extraInfo *adapters.
 
 	return []*adapters.RequestData{
 		{Method: "POST", URI: a.endpoint, Body: requestBody, Headers: headers},
-	}, nil
+	}, errs
 }
 
 func (a *Adapter) MakeBids(request *openrtb.BidRequest, responseData *adapters.ResponseData) (*adapters.BidderResponse, []error) {
