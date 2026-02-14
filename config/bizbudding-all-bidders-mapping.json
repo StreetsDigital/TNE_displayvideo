@@ -1,7 +1,7 @@
 {
   "publisher": {
     "publisherId": "icisic-media",
-    "domain": "dev.totalprosports.com",
+    "domain": "totalprosports.com",
     "defaultBidders": [
       "rubicon",
       "kargo",
@@ -11,7 +11,7 @@
     ]
   },
   "adUnits": {
-    "dev.totalprosports.com/billboard": {
+    "totalprosports.com/billboard": {
       "rubicon": {
         "accountId": 26298,
         "siteId": 556630,
@@ -32,7 +32,7 @@
         "inventoryCode": "BizBudding_RON_NativeFlex_pbc2s"
       }
     },
-    "dev.totalprosports.com/billboard-wide": {
+    "totalprosports.com/billboard-wide": {
       "rubicon": {
         "accountId": 26298,
         "siteId": 556630,
@@ -53,7 +53,7 @@
         "inventoryCode": "BizBudding_RON_NativeFlex_pbc2s"
       }
     },
-    "dev.totalprosports.com/leaderboard": {
+    "totalprosports.com/leaderboard": {
       "rubicon": {
         "accountId": 26298,
         "siteId": 556630,
@@ -74,7 +74,7 @@
         "inventoryCode": "BizBudding_RON_HDX_pbc2s"
       }
     },
-    "dev.totalprosports.com/leaderboard-wide": {
+    "totalprosports.com/leaderboard-wide": {
       "rubicon": {
         "accountId": 26298,
         "siteId": 556630,
@@ -95,7 +95,7 @@
         "inventoryCode": "BizBudding_RON_HDX_pbc2s"
       }
     },
-    "dev.totalprosports.com/rectangle-medium": {
+    "totalprosports.com/rectangle-medium": {
       "rubicon": {
         "accountId": 26298,
         "siteId": 556630,
@@ -116,7 +116,7 @@
         "inventoryCode": "BizBudding_RON_NativeFlex_pbc2s"
       }
     },
-    "dev.totalprosports.com/skyscraper": {
+    "totalprosports.com/skyscraper": {
       "rubicon": {
         "accountId": 26298,
         "siteId": 556630,
@@ -137,7 +137,7 @@
         "inventoryCode": "BizBudding_RON_HDX_pbc2s"
       }
     },
-    "dev.totalprosports.com/skyscraper-wide": {
+    "totalprosports.com/skyscraper-wide": {
       "rubicon": {
         "accountId": 26298,
         "siteId": 556630,
@@ -158,7 +158,7 @@
         "inventoryCode": "BizBudding_RON_NativeFlex_pbc2s"
       }
     },
-    "dev.totalprosports.com/rectangle-medium-adhesion": {
+    "totalprosports.com/rectangle-medium-adhesion": {
       "rubicon": {
         "accountId": 26298,
         "siteId": 556630,
@@ -179,7 +179,7 @@
         "inventoryCode": "BizBudding_Native_Adhesion_Prebidc2s"
       }
     },
-    "dev.totalprosports.com/skyscraper-wide-adhesion": {
+    "totalprosports.com/skyscraper-wide-adhesion": {
       "rubicon": {
         "accountId": 26298,
         "siteId": 556630,
@@ -200,7 +200,7 @@
         "inventoryCode": "BizBudding_RON_NativeFlex_pbc2s"
       }
     },
-    "dev.totalprosports.com/leaderboard-wide-adhesion": {
+    "totalprosports.com/leaderboard-wide-adhesion": {
       "rubicon": {
         "accountId": 26298,
         "siteId": 556630,

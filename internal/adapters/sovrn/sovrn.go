@@ -95,6 +95,16 @@ func (a *Adapter) MakeRequests(request *openrtb.BidRequest, extraInfo *adapters.
 	// Update request with valid impressions
 	requestCopy.Imp = validImps
 
+	// Extract Sovrn user ID from user.ext.eids and set in user.id
+	// Sovrn (Lijit) uses user.id for user matching and frequency capping
+	if requestCopy.User != nil {
+		requestCopy.User = adapters.SetUserID(requestCopy.User, "lijit.com")
+		logger.Log.Debug().
+			Str("adapter", "sovrn").
+			Str("user_id", requestCopy.User.ID).
+			Msg("Set Sovrn user ID from eids")
+	}
+
 	body, err := json.Marshal(requestCopy)
 	if err != nil {
 		return nil, append(errs, fmt.Errorf("failed to marshal request: %w", err))

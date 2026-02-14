@@ -185,6 +185,16 @@ func (a *Adapter) MakeRequests(request *openrtb.BidRequest, extraInfo *adapters.
 			reqCopy.Site = &siteCopy
 		}
 
+		// Extract Rubicon user ID from user.ext.eids and set in user.id
+		// Rubicon expects user.id to contain their user ID for frequency capping and targeting
+		if reqCopy.User != nil {
+			reqCopy.User = adapters.SetUserID(reqCopy.User, "rubiconproject.com")
+			logger.Log.Debug().
+				Str("adapter", "rubicon").
+				Str("user_id", reqCopy.User.ID).
+				Msg("Set Rubicon user ID from eids")
+		}
+
 		requestBody, err := json.Marshal(reqCopy)
 		if err != nil {
 			errors = append(errors, fmt.Errorf("failed to marshal request for imp %s: %w", imp.ID, err))

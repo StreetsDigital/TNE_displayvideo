@@ -65,6 +65,16 @@ func (a *Adapter) MakeRequests(request *openrtb.BidRequest, extraInfo *adapters.
 		requestCopy.App = &appCopy
 	}
 
+	// Extract Kargo user ID from user.ext.eids and set in user.id
+	// Kargo uses user.id for frequency capping and user matching
+	if requestCopy.User != nil {
+		requestCopy.User = adapters.SetUserID(requestCopy.User, "kargo.com")
+		logger.Log.Debug().
+			Str("adapter", "kargo").
+			Str("user_id", requestCopy.User.ID).
+			Msg("Set Kargo user ID from eids")
+	}
+
 	requestBody, err := json.Marshal(requestCopy)
 	if err != nil {
 		return nil, []error{fmt.Errorf("failed to marshal request: %w", err)}

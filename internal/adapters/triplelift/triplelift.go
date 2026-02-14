@@ -116,6 +116,16 @@ func (a *Adapter) MakeRequests(request *openrtb.BidRequest, extraInfo *adapters.
 
 	requestCopy.Imp = validImps
 
+	// Extract TripleLift user ID from user.ext.eids and set in user.id
+	// TripleLift uses user.id for user matching and frequency capping
+	if requestCopy.User != nil {
+		requestCopy.User = adapters.SetUserID(requestCopy.User, "triplelift.com")
+		logger.Log.Debug().
+			Str("adapter", "triplelift").
+			Str("user_id", requestCopy.User.ID).
+			Msg("Set TripleLift user ID from eids")
+	}
+
 	requestBody, err := json.Marshal(requestCopy)
 	if err != nil {
 		return nil, append(errs, fmt.Errorf("failed to marshal request: %w", err))
