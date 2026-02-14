@@ -219,17 +219,17 @@ WHERE code = 'sovrn';
 UPDATE bidders_new
 SET param_schema = '{
   "$schema": "http://json-schema.org/draft-04/schema#",
-  "title": "TripleLift Adapter Params",
+  "title": "Triplelift Adapter Params",
+  "description": "A schema which validates params accepted by the Triplelift adapter",
   "type": "object",
   "properties": {
     "inventoryCode": {
       "type": "string",
-      "description": "TripleLift inventory code"
+      "description": "TripleLift inventory code for this ad unit (provided to you by your partner manager)"
     },
     "floor": {
       "type": "number",
-      "minimum": 0,
-      "description": "Bid floor price"
+      "description": "the bid floor"
     }
   },
   "required": ["inventoryCode"]
