@@ -132,6 +132,9 @@
     }
   };
 
+  // Module-level FPID cache for consistency across cookie sync and bid requests
+  var _cachedFPID = null;
+
   // First-Party ID Manager
   catalyst._fpidManager = {
     cookieName: 'uids',  // Store in existing uids cookie
@@ -198,23 +201,63 @@
       return null;
     },
 
+    // Set FPID in cookie
+    set: function(fpid) {
+      // Store FPID in uids cookie structure
+      var uids = catalyst._getCookie(this.cookieName);
+      var data = {};
+
+      if (uids) {
+        try {
+          var decoded = atob(uids);
+          data = JSON.parse(decoded);
+        } catch (e) {
+          catalyst.log('Failed to parse existing uids cookie, creating new:', e);
+        }
+      }
+
+      data.fpid = fpid;
+      var encoded = btoa(JSON.stringify(data));
+
+      // Calculate expiry date
+      var expiryDate = new Date();
+      expiryDate.setTime(expiryDate.getTime() + (this.expiryDays * 24 * 60 * 60 * 1000));
+
+      // Set cookie with SameSite=Lax for cross-site compatibility
+      document.cookie = this.cookieName + '=' + encoded +
+                       '; expires=' + expiryDate.toUTCString() +
+                       '; path=/' +
+                       '; SameSite=Lax';
+
+      catalyst.log('Saved FPID to cookie:', fpid);
+    },
+
     // Generate or retrieve existing FPID (respects GDPR consent)
     getOrCreate: function() {
-      // Always return existing FPID if available
+      // 1. Check memory cache first (ensures consistency within page session)
+      if (_cachedFPID) {
+        return _cachedFPID;
+      }
+
+      // 2. Check cookie for persistent FPID
       var fpid = this.get();
       if (fpid) {
-        catalyst.log('Retrieved existing FPID:', fpid);
+        _cachedFPID = fpid;  // Cache it for this session
+        catalyst.log('Retrieved existing FPID from cookie:', fpid);
         return fpid;
       }
 
-      // Only generate new FPID if we have consent
+      // 3. Only generate new FPID if we have consent
       if (!this.hasConsent()) {
         catalyst.log('FPID generation blocked - GDPR applies but no valid TCF consent');
         return null;
       }
 
+      // 4. Generate new FPID and persist immediately
       fpid = this.generate();
-      catalyst.log('Generated new FPID:', fpid);
+      _cachedFPID = fpid;  // Cache immediately
+      this.set(fpid);      // Save to cookie
+      catalyst.log('Generated and cached new FPID:', fpid);
       return fpid;
     }
   };
@@ -969,21 +1012,34 @@
           try {
             var response = JSON.parse(xhr.responseText);
             catalyst._fireSyncPixels(response);
+
+            // TIMING FIX: Wait for setuid callbacks to complete before marking sync done
+            var syncWaitTime = catalyst._config.userSync.syncWaitTime || 1500;
+            catalyst.log('Waiting ' + syncWaitTime + 'ms for setuid callbacks to complete...');
+
+            setTimeout(function() {
+              catalyst._userSyncComplete = true;
+              catalyst.log('Cookie sync grace period complete - SDK ready for bid requests');
+              if (typeof onComplete === 'function') {
+                onComplete();
+              }
+            }, syncWaitTime);
           } catch (e) {
             catalyst.log('Error parsing sync response:', e);
+            if (typeof onComplete === 'function') {
+              onComplete();
+            }
           }
         } else {
           catalyst.log('User sync request failed:', xhr.status);
-        }
-        // Call completion callback even on failure
-        if (typeof onComplete === 'function') {
-          onComplete();
+          if (typeof onComplete === 'function') {
+            onComplete();
+          }
         }
       };
 
       xhr.onerror = function() {
         catalyst.log('User sync network error');
-        // Call completion callback even on error
         if (typeof onComplete === 'function') {
           onComplete();
         }
@@ -991,7 +1047,6 @@
 
       xhr.ontimeout = function() {
         catalyst.log('User sync timeout');
-        // Call completion callback even on timeout
         if (typeof onComplete === 'function') {
           onComplete();
         }
@@ -1006,13 +1061,10 @@
         xhr.send(JSON.stringify(syncRequest));
       } catch (e) {
         catalyst.log('Error sending sync request:', e);
-        // Call completion callback even on exception
         if (typeof onComplete === 'function') {
           onComplete();
         }
       }
-
-      catalyst._userSyncComplete = true;
     };
 
     // Add privacy parameters if available, then send request

@@ -70,8 +70,9 @@ type TripleliftParams struct {
 // CatalystBidHandler handles MAI Publisher-compatible bid requests
 type CatalystBidHandler struct {
 	exchange       *exchange.Exchange
-	mapping        *BidderMapping      // Legacy: static mapping file (fallback)
-	publisherStore *storage.PublisherStore // Dynamic hierarchical config from database
+	mapping        *BidderMapping             // Legacy: static mapping file (fallback)
+	publisherStore *storage.PublisherStore    // Dynamic hierarchical config from database
+	userSyncStore  *storage.UserSyncStore     // User sync storage for persistent UIDs
 }
 
 // LoadBidderMapping loads bidder parameter mapping from JSON file
@@ -95,11 +96,12 @@ func LoadBidderMapping(path string) (*BidderMapping, error) {
 }
 
 // NewCatalystBidHandler creates a new Catalyst bid handler
-func NewCatalystBidHandler(ex *exchange.Exchange, mapping *BidderMapping, publisherStore *storage.PublisherStore) *CatalystBidHandler {
+func NewCatalystBidHandler(ex *exchange.Exchange, mapping *BidderMapping, publisherStore *storage.PublisherStore, userSyncStore *storage.UserSyncStore) *CatalystBidHandler {
 	return &CatalystBidHandler{
 		exchange:       ex,
 		mapping:        mapping,
 		publisherStore: publisherStore,
+		userSyncStore:  userSyncStore,
 	}
 }
 
@@ -356,6 +358,38 @@ func (h *CatalystBidHandler) validateMAIBidRequest(req *MAIBidRequest) error {
 	return nil
 }
 
+// normalizeSlotPattern generates multiple slot pattern variations for flexible matching
+// Returns patterns in priority order: exact match → without prefix → without suffix → base
+func normalizeSlotPattern(domain, divID, adUnitPath string) []string {
+	patterns := []string{}
+
+	// 1. Try exact match with adUnitPath first (if provided)
+	if adUnitPath != "" {
+		patterns = append(patterns, fmt.Sprintf("%s%s", domain, adUnitPath))
+	}
+
+	// 2. Try exact domain/divID
+	if divID != "" {
+		patterns = append(patterns, fmt.Sprintf("%s/%s", domain, divID))
+	}
+
+	// 3. Try without "mai-ad-" prefix (common pattern)
+	if divID != "" && strings.HasPrefix(divID, "mai-ad-") {
+		simpleDivID := strings.TrimPrefix(divID, "mai-ad-")
+		patterns = append(patterns, fmt.Sprintf("%s/%s", domain, simpleDivID))
+
+		// 4. Try without "-wide" or "-narrow" suffixes
+		for _, suffix := range []string{"-wide", "-narrow", "-tablet"} {
+			if strings.HasSuffix(simpleDivID, suffix) {
+				baseDivID := strings.TrimSuffix(simpleDivID, suffix)
+				patterns = append(patterns, fmt.Sprintf("%s/%s", domain, baseDivID))
+			}
+		}
+	}
+
+	return patterns
+}
+
 // convertToOpenRTB converts MAI bid request to OpenRTB format
 func (h *CatalystBidHandler) convertToOpenRTB(r *http.Request, maiBid *MAIBidRequest) (*openrtb.BidRequest, map[string]string, error) {
 	// Generate request ID
@@ -436,44 +470,62 @@ func (h *CatalystBidHandler) convertToOpenRTB(r *http.Request, maiBid *MAIBidReq
 			deviceType = detectDeviceType(maiBid.Device.UserAgent)
 		}
 
-		// Build slot pattern for database lookup (e.g., "totalprosports.com/billboard")
-		slotPattern := ""
-		if domain != "" && slot.DivID != "" {
-			slotPattern = fmt.Sprintf("%s/%s", domain, slot.DivID)
-		}
-
-		// Query new normalized schema: accounts → publishers → ad_slots → slot_bidder_configs
+		// Try multiple slot pattern variations for flexible matching
+		// This handles cases like "mai-ad-billboard-wide" → "billboard"
 		var allConfigs map[string]map[string]interface{}
 		var err error
-		if h.publisherStore != nil && slotPattern != "" {
-			allConfigs, err = h.publisherStore.GetSlotBidderConfigs(
-				r.Context(),
-				maiBid.AccountID, // CATALYST internal account ID (e.g., '12345')
-				domain,           // Publisher domain (e.g., 'totalprosports.com')
-				slotPattern,      // Ad slot pattern (e.g., 'totalprosports.com/billboard')
-				deviceType,       // Device type ('desktop' or 'mobile')
-			)
-			if err != nil {
-				logger.Log.Error().
-					Err(err).
+		var matchedPattern string
+
+		if h.publisherStore != nil && domain != "" && slot.DivID != "" {
+			patterns := normalizeSlotPattern(domain, slot.DivID, adUnitPath)
+
+			logger.Log.Debug().
+				Str("div_id", slot.DivID).
+				Strs("patterns_to_try", patterns).
+				Msg("Trying multiple slot pattern variations")
+
+			// Try each pattern until we find configs
+			for _, pattern := range patterns {
+				allConfigs, err = h.publisherStore.GetSlotBidderConfigs(
+					r.Context(),
+					maiBid.AccountID, // CATALYST internal account ID (e.g., '12345')
+					domain,           // Publisher domain (e.g., 'totalprosports.com')
+					pattern,          // Ad slot pattern (trying variations)
+					deviceType,       // Device type ('desktop' or 'mobile')
+				)
+
+				if err != nil {
+					logger.Log.Debug().
+						Err(err).
+						Str("pattern", pattern).
+						Msg("Pattern lookup failed, trying next")
+					continue
+				}
+
+				if len(allConfigs) > 0 {
+					matchedPattern = pattern
+					logger.Log.Info().
+						Str("slot_pattern", matchedPattern).
+						Str("div_id", slot.DivID).
+						Str("device_type", deviceType).
+						Strs("bidder_names", getConfiguredBidders(allConfigs)).
+						Int("bidders_configured", len(allConfigs)).
+						Str("account_id", maiBid.AccountID).
+						Str("domain", domain).
+						Msg("✓ Matched slot pattern and loaded bidder configs")
+					break
+				}
+			}
+
+			// If no patterns matched, log error
+			if matchedPattern == "" {
+				logger.Log.Warn().
 					Str("account_id", maiBid.AccountID).
 					Str("domain", domain).
-					Str("slot_pattern", slotPattern).
-					Str("device_type", deviceType).
-					Str("error_type", fmt.Sprintf("%T", err)).
-					Str("error_msg", err.Error()).
-					Msg("❌ Database error looking up slot bidder configs")
+					Str("div_id", slot.DivID).
+					Strs("patterns_tried", patterns).
+					Msg("⚠️  No bidder configs found for any slot pattern variation")
 				allConfigs = make(map[string]map[string]interface{})
-			} else {
-				logger.Log.Info().
-					Str("slot_pattern", slotPattern).
-					Str("device_type", deviceType).
-					Strs("bidder_names", getConfiguredBidders(allConfigs)).
-					Int("bidders_configured", len(allConfigs)).
-					Str("account_id", maiBid.AccountID).
-					Str("domain", domain).
-					Interface("full_config", allConfigs).
-					Msg("✓ Loaded bidder configs from normalized schema (account → publisher → slot)")
 			}
 		} else {
 			// Fallback: Try legacy hierarchical lookup if slot pattern unavailable
@@ -723,17 +775,67 @@ func (h *CatalystBidHandler) convertToOpenRTB(r *http.Request, maiBid *MAIBidReq
 	var user *openrtb.User
 	var regs *openrtb.Regs
 
-	// Collect user IDs from all sources
+	// Collect user IDs from all sources (priority: request body > database > cookie)
 	userIDs := make(map[string]string)
 
-	// 1. From request body (SDK sends these)
+	// Extract FPID from request or cookie for database lookups
+	fpid := ""
+	if maiBid.User != nil && maiBid.User.FPID != "" {
+		fpid = maiBid.User.FPID
+	} else {
+		cookieSync := usersync.ParseCookie(r)
+		fpid = cookieSync.GetFPID()
+	}
+
+	// 1. From database (most persistent and reliable source)
+	if fpid != "" && h.userSyncStore != nil {
+		logger.Log.Debug().
+			Str("fpid", fpid).
+			Msg("Attempting to load user syncs from database")
+
+		dbSyncs, err := h.userSyncStore.GetSyncsForUser(r.Context(), fpid)
+		if err != nil {
+			logger.Log.Warn().
+				Err(err).
+				Str("fpid", fpid).
+				Msg("Failed to load user syncs from database")
+		} else {
+			logger.Log.Debug().
+				Str("fpid", fpid).
+				Int("uids_from_db", len(dbSyncs)).
+				Interface("db_syncs", dbSyncs).
+				Msg("Database UID lookup result")
+
+			if len(dbSyncs) > 0 {
+				for bidder, uid := range dbSyncs {
+					userIDs[bidder] = uid
+				}
+				logger.Log.Info().
+					Str("fpid", fpid).
+					Int("syncs_loaded", len(dbSyncs)).
+					Strs("bidders", getBidderKeys(dbSyncs)).
+					Msg("Loaded user syncs from database")
+			} else {
+				logger.Log.Warn().
+					Str("fpid", fpid).
+					Msg("No user syncs found in database for this FPID")
+			}
+		}
+	} else {
+		logger.Log.Debug().
+			Str("fpid", fpid).
+			Bool("userSyncStore_available", h.userSyncStore != nil).
+			Msg("Skipping database UID lookup")
+	}
+
+	// 2. From request body (SDK sends these) - overrides database
 	if maiBid.User != nil && len(maiBid.User.UserIds) > 0 {
 		for bidder, uid := range maiBid.User.UserIds {
 			userIDs[bidder] = uid
 		}
 	}
 
-	// 2. From HTTP cookie as fallback (server-side cookie sync)
+	// 3. From HTTP cookie as final fallback (least reliable due to cookie restrictions)
 	cookieSync := usersync.ParseCookie(r)
 	bidders := []string{"rubicon", "kargo", "sovrn", "pubmatic", "triplelift", "appnexus"}
 	for _, bidder := range bidders {
@@ -743,6 +845,13 @@ func (h *CatalystBidHandler) convertToOpenRTB(r *http.Request, maiBid *MAIBidReq
 			}
 		}
 	}
+
+	// Log final user ID collection status before building OpenRTB request
+	logger.Log.Info().
+		Str("fpid", fpid).
+		Int("total_user_ids", len(userIDs)).
+		Strs("bidders_with_uids", getBidderKeys(userIDs)).
+		Msg("User IDs available for auction")
 
 	// Create user object if we have IDs or consent data
 	if len(userIDs) > 0 || maiBid.User != nil {
@@ -885,6 +994,25 @@ func (h *CatalystBidHandler) convertToOpenRTB(r *http.Request, maiBid *MAIBidReq
 		}
 	}
 
+	// Build supply chain object (schain) - REQUIRED for transparency and fraud prevention
+	// Identifies Catalyst as the seller in the supply chain
+	schainJSON := fmt.Sprintf(`{
+		"schain": {
+			"ver": "1.0",
+			"complete": 1,
+			"nodes": [{
+				"asi": "thenexusengine.com",
+				"sid": "%s",
+				"hp": 1,
+				"name": "The Nexus Engine (Catalyst)"
+			}]
+		}
+	}`, maiBid.AccountID)
+
+	source := &openrtb.Source{
+		Ext: json.RawMessage(schainJSON),
+	}
+
 	// Build OpenRTB request
 	ortbReq := &openrtb.BidRequest{
 		ID:     requestID,
@@ -893,9 +1021,14 @@ func (h *CatalystBidHandler) convertToOpenRTB(r *http.Request, maiBid *MAIBidReq
 		Device: deviceObj,
 		User:   user,
 		Regs:   regs,
+		Source: source, // Supply chain transparency
 		Cur:    []string{"USD"},
 		TMax:   2500, // 2500ms internal timeout
 	}
+
+	logger.Log.Debug().
+		Str("account_id", maiBid.AccountID).
+		Msg("Added supply chain (schain) to bid request")
 
 	return ortbReq, impToSlot, nil
 }
