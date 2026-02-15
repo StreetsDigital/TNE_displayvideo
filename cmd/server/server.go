@@ -41,6 +41,7 @@ type Server struct {
 	db                *storage.BidderStore
 	publisher         *storage.PublisherStore
 	idGraphStore      *storage.IDGraphStore
+	userSyncStore     *storage.UserSyncStore
 	redisClient       *redis.Client
 	currencyConverter *currency.Converter
 }
@@ -135,7 +136,9 @@ func (s *Server) initDatabase() error {
 	s.db = storage.NewBidderStore(dbConn)
 	s.publisher = storage.NewPublisherStore(dbConn)
 	s.idGraphStore = storage.NewIDGraphStore(dbConn)
+	s.userSyncStore = storage.NewUserSyncStore(dbConn)
 	log.Info().Msg("ID graph store initialized")
+	log.Info().Msg("User sync store initialized")
 
 	// Load and log bidders from database
 	bidders, err := s.db.ListActive(ctx)
@@ -285,8 +288,8 @@ func (s *Server) initHandlers() {
 
 	// Cookie sync handlers
 	cookieSyncConfig := endpoints.DefaultCookieSyncConfig(s.config.HostURL)
-	cookieSyncHandler := endpoints.NewCookieSyncHandler(cookieSyncConfig)
-	setuidHandler := endpoints.NewSetUIDHandler(cookieSyncHandler.ListBidders(), s.idGraphStore)
+	cookieSyncHandler := endpoints.NewCookieSyncHandler(cookieSyncConfig, s.userSyncStore)
+	setuidHandler := endpoints.NewSetUIDHandler(cookieSyncHandler.ListBidders(), s.idGraphStore, s.userSyncStore)
 	optoutHandler := endpoints.NewOptOutHandler()
 
 	log.Info().
@@ -353,7 +356,7 @@ func (s *Server) initHandlers() {
 		Strs("bidders", bidderMapping.Publisher.DefaultBidders).
 		Msg("Loaded bidder mapping configuration")
 
-	catalystBidHandler := endpoints.NewCatalystBidHandler(s.exchange, bidderMapping, s.publisher)
+	catalystBidHandler := endpoints.NewCatalystBidHandler(s.exchange, bidderMapping, s.publisher, s.userSyncStore)
 	mux.HandleFunc("/v1/bid", catalystBidHandler.HandleBidRequest)
 
 	log.Info().

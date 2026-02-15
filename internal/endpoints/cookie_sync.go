@@ -4,7 +4,9 @@ import (
 	"encoding/json"
 	"net/http"
 	"strings"
+	"time"
 
+	"github.com/thenexusengine/tne_springwire/internal/storage"
 	"github.com/thenexusengine/tne_springwire/internal/usersync"
 	"github.com/thenexusengine/tne_springwire/pkg/logger"
 )
@@ -57,9 +59,10 @@ type BidderSyncStatus struct {
 
 // CookieSyncHandler handles cookie sync requests
 type CookieSyncHandler struct {
-	syncers  map[string]*usersync.Syncer
-	hostURL  string
-	maxSyncs int
+	syncers       map[string]*usersync.Syncer
+	hostURL       string
+	maxSyncs      int
+	userSyncStore *storage.UserSyncStore // Database storage for user syncs
 }
 
 // CookieSyncConfig holds configuration for the cookie sync handler
@@ -79,7 +82,7 @@ func DefaultCookieSyncConfig(hostURL string) *CookieSyncConfig {
 }
 
 // NewCookieSyncHandler creates a new cookie sync handler
-func NewCookieSyncHandler(config *CookieSyncConfig) *CookieSyncHandler {
+func NewCookieSyncHandler(config *CookieSyncConfig, userSyncStore *storage.UserSyncStore) *CookieSyncHandler {
 	syncers := make(map[string]*usersync.Syncer)
 
 	for code, syncConfig := range config.SyncConfigs {
@@ -87,9 +90,10 @@ func NewCookieSyncHandler(config *CookieSyncConfig) *CookieSyncHandler {
 	}
 
 	return &CookieSyncHandler{
-		syncers:  syncers,
-		hostURL:  config.HostURL,
-		maxSyncs: config.MaxSyncs,
+		syncers:       syncers,
+		hostURL:       config.HostURL,
+		maxSyncs:      config.MaxSyncs,
+		userSyncStore: userSyncStore,
 	}
 }
 
@@ -287,8 +291,31 @@ func (h *CookieSyncHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Store sync records in database if FPID is available and database is enabled
+	fpid := cookie.GetFPID()
+	if fpid != "" && h.userSyncStore != nil && len(syncedBidders) > 0 {
+		// Store each synced bidder in database (UID will be NULL until callback)
+		ctx := r.Context()
+		expiresAt := time.Now().Add(90 * 24 * time.Hour) // 90 days typical cookie lifetime
+
+		for _, bidderCode := range syncedBidders {
+			if err := h.userSyncStore.UpsertSync(ctx, fpid, bidderCode, nil, &expiresAt); err != nil {
+				logger.Log.Warn().
+					Err(err).
+					Str("fpid", fpid).
+					Str("bidder", bidderCode).
+					Msg("Failed to store user sync record in database")
+			}
+		}
+
+		logger.Log.Debug().
+			Str("fpid", fpid).
+			Strs("bidders", syncedBidders).
+			Msg("Stored user sync records in database")
+	}
+
 	logger.Log.Info().
-		Str("fpid", cookie.GetFPID()).
+		Str("fpid", fpid).
 		Strs("synced_bidders", syncedBidders).
 		Int("synced_count", len(syncedBidders)).
 		Int("requested_count", len(biddersToSync)).
