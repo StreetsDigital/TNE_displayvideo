@@ -211,23 +211,23 @@ FROM slots s, bidders b WHERE b.code = 'sovrn'
 -- OMS configurations
 UNION ALL
 SELECT s.slot_id, b.bidder_id, 'desktop',
-    '{"publisherId": "12345", "placementId": "totalprosports-' || s.slot_name || '-desktop"}'::jsonb,
+    jsonb_build_object('publisherId', '12345', 'placementId', 'totalprosports-' || s.slot_name || '-desktop'),
     'active'
 FROM slots s, bidders b WHERE b.code = 'oms'
 UNION ALL
 SELECT s.slot_id, b.bidder_id, 'mobile',
-    '{"publisherId": "12345", "placementId": "totalprosports-' || s.slot_name || '-mobile"}'::jsonb,
+    jsonb_build_object('publisherId', '12345', 'placementId', 'totalprosports-' || s.slot_name || '-mobile'),
     'active'
 FROM slots s, bidders b WHERE b.code = 'oms'
 -- ANIVIEW configurations
 UNION ALL
 SELECT s.slot_id, b.bidder_id, 'desktop',
-    '{"publisherId": "12345", "placementId": "totalprosports-' || s.slot_name || '-desktop"}'::jsonb,
+    jsonb_build_object('publisherId', '12345', 'placementId', 'totalprosports-' || s.slot_name || '-desktop'),
     'active'
 FROM slots s, bidders b WHERE b.code = 'aniview'
 UNION ALL
 SELECT s.slot_id, b.bidder_id, 'mobile',
-    '{"publisherId": "12345", "placementId": "totalprosports-' || s.slot_name || '-mobile"}'::jsonb,
+    jsonb_build_object('publisherId', '12345', 'placementId', 'totalprosports-' || s.slot_name || '-mobile'),
     'active'
 FROM slots s, bidders b WHERE b.code = 'aniview'
 -- PUBMATIC configurations
@@ -244,12 +244,12 @@ FROM slots s, bidders b WHERE b.code = 'pubmatic'
 -- TRIPLELIFT configurations
 UNION ALL
 SELECT s.slot_id, b.bidder_id, 'desktop',
-    '{"inventoryCode": "totalprosports_' || s.slot_name || '_prebid"}'::jsonb,
+    jsonb_build_object('inventoryCode', 'totalprosports_' || s.slot_name || '_prebid'),
     'active'
 FROM slots s, bidders b WHERE b.code = 'triplelift'
 UNION ALL
 SELECT s.slot_id, b.bidder_id, 'mobile',
-    '{"inventoryCode": "totalprosports_' || s.slot_name || '_prebid_mobile"}'::jsonb,
+    jsonb_build_object('inventoryCode', 'totalprosports_' || s.slot_name || '_prebid_mobile'),
     'active'
 FROM slots s, bidders b WHERE b.code = 'triplelift'
 ON CONFLICT (ad_slot_id, bidder_id, device_type) DO UPDATE
