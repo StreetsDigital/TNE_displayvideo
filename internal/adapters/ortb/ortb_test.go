@@ -120,14 +120,15 @@ func TestGenericAdapter_MakeRequests_Headers(t *testing.T) {
 	requests, _ := adapter.MakeRequests(request, nil)
 
 	headers := requests[0].Headers
-	if headers.Get("Content-Type") != "application/json;charset=utf-8" {
-		t.Error("expected Content-Type header")
+	if ct := headers.Get("Content-Type"); ct != "application/json" {
+		t.Errorf("expected Content-Type 'application/json', got %q", ct)
 	}
 	if headers.Get("Accept") != "application/json" {
 		t.Error("expected Accept header")
 	}
-	if headers.Get("X-OpenRTB-Version") != "2.5" {
-		t.Error("expected X-OpenRTB-Version header")
+	// Config has ProtocolVersion "2.5", which overrides the default "2.6"
+	if v := headers.Get("X-OpenRTB-Version"); v != "2.5" {
+		t.Errorf("expected X-OpenRTB-Version '2.5', got %q", v)
 	}
 }
 

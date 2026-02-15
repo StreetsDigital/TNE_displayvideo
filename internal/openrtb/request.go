@@ -17,11 +17,13 @@ type BidRequest struct {
 	WSeat  []string        `json:"wseat,omitempty"` // Allowed buyer seats
 	BSeat  []string        `json:"bseat,omitempty"` // Blocked buyer seats
 	AllImp int             `json:"allimps,omitempty"`
-	Cur    []string        `json:"cur,omitempty"`   // Allowed currencies
-	WLang  []string        `json:"wlang,omitempty"` // Allowed languages
-	BCat   []string        `json:"bcat,omitempty"`  // Blocked categories
-	BAdv   []string        `json:"badv,omitempty"`  // Blocked advertisers
-	BApp   []string        `json:"bapp,omitempty"`  // Blocked apps
+	Cur    []string        `json:"cur,omitempty"`    // Allowed currencies
+	WLang  []string        `json:"wlang,omitempty"`  // Allowed languages (ISO-639-1-alpha-2)
+	WLangB []string        `json:"wlangb,omitempty"` // 2.6: Allowed languages (IETF BCP 47)
+	BCat   []string        `json:"bcat,omitempty"`   // Blocked categories
+	CatTax int             `json:"cattax,omitempty"` // 2.6: Taxonomy for bcat (1=IAB 1.0, 2=IAB 2.0, 3=IAB 2.2)
+	BAdv   []string        `json:"badv,omitempty"`   // Blocked advertisers
+	BApp   []string        `json:"bapp,omitempty"`   // Blocked apps
 	Source *Source         `json:"source,omitempty"`
 	Regs   *Regs           `json:"regs,omitempty"`
 	Ext    json.RawMessage `json:"ext,omitempty"`
@@ -46,6 +48,8 @@ type Imp struct {
 	Secure            *int            `json:"secure,omitempty"`
 	IframeBuster      []string        `json:"iframebuster,omitempty"`
 	Exp               int             `json:"exp,omitempty"`
+	Rwdd              int             `json:"rwdd,omitempty"` // 2.6: Rewarded inventory (0=no, 1=yes)
+	SSAI              int             `json:"ssai,omitempty"` // 2.6: Server-side ad insertion status
 	Ext               json.RawMessage `json:"ext,omitempty"`
 }
 
@@ -54,10 +58,10 @@ type Banner struct {
 	Format   []Format        `json:"format,omitempty"`
 	W        int             `json:"w,omitempty"`
 	H        int             `json:"h,omitempty"`
-	WMax     int             `json:"wmax,omitempty"`
-	HMax     int             `json:"hmax,omitempty"`
-	WMin     int             `json:"wmin,omitempty"`
-	HMin     int             `json:"hmin,omitempty"`
+	WMax     int             `json:"wmax,omitempty"` // Deprecated in 2.6, use format
+	HMax     int             `json:"hmax,omitempty"` // Deprecated in 2.6, use format
+	WMin     int             `json:"wmin,omitempty"` // Deprecated in 2.6, use format
+	HMin     int             `json:"hmin,omitempty"` // Deprecated in 2.6, use format
 	BType    []int           `json:"btype,omitempty"` // Blocked banner types
 	BAttr    []int           `json:"battr,omitempty"` // Blocked creative attributes
 	Pos      int             `json:"pos,omitempty"`   // Ad position
@@ -86,16 +90,17 @@ type Video struct {
 	MinDuration    int             `json:"minduration,omitempty"`
 	MaxDuration    int             `json:"maxduration,omitempty"`
 	Protocols      []int           `json:"protocols,omitempty"`
-	Protocol       int             `json:"protocol,omitempty"` // Deprecated
+	Protocol       int             `json:"protocol,omitempty"` // Deprecated: use protocols
 	W              int             `json:"w,omitempty"`
 	H              int             `json:"h,omitempty"`
 	StartDelay     *int            `json:"startdelay,omitempty"`
-	Placement      int             `json:"placement,omitempty"`
+	Placement      int             `json:"placement,omitempty"` // Deprecated: use plcmt
+	Plcmt          int             `json:"plcmt,omitempty"`     // 2.6: Video placement type (1=instream, 2=accompanying, 3=interstitial, 4=standalone)
 	Linearity      int             `json:"linearity,omitempty"`
 	Skip           *int            `json:"skip,omitempty"`
 	SkipMin        int             `json:"skipmin,omitempty"`
 	SkipAfter      int             `json:"skipafter,omitempty"`
-	Sequence       int             `json:"sequence,omitempty"`
+	Sequence       int             `json:"sequence,omitempty"` // Deprecated: use pod fields
 	BAttr          []int           `json:"battr,omitempty"`
 	MaxExtended    int             `json:"maxextended,omitempty"`
 	MinBitrate     int             `json:"minbitrate,omitempty"`
@@ -108,7 +113,15 @@ type Video struct {
 	CompanionAd    []Banner        `json:"companionad,omitempty"`
 	API            []int           `json:"api,omitempty"`
 	CompanionType  []int           `json:"companiontype,omitempty"`
-	Ext            json.RawMessage `json:"ext,omitempty"`
+	// 2.6 pod bidding fields
+	PodDur       int             `json:"poddur,omitempty"`       // Total pod duration in seconds
+	PodID        string          `json:"podid,omitempty"`        // Pod identifier
+	PodSeq       int             `json:"podseq,omitempty"`       // Position of pod in content (-1=pre, 0=mid, 1=post)
+	RqdDurs      []int           `json:"rqddurs,omitempty"`      // Precise acceptable durations
+	SlotInPod    int             `json:"slotinpod,omitempty"`    // Slot position in pod (0=any, 1=first, 2=last, 3=first/last)
+	MinCPMPerSec float64         `json:"mincpmpersec,omitempty"` // Minimum CPM per second of duration
+	MaxSeq       int             `json:"maxseq,omitempty"`       // Maximum number of ads in a pod
+	Ext          json.RawMessage `json:"ext,omitempty"`
 }
 
 // Audio represents an audio impression
@@ -131,7 +144,14 @@ type Audio struct {
 	Feed          int             `json:"feed,omitempty"`
 	Stitched      int             `json:"stitched,omitempty"`
 	NVol          int             `json:"nvol,omitempty"`
-	Ext           json.RawMessage `json:"ext,omitempty"`
+	// 2.6 pod fields
+	PodDur       int             `json:"poddur,omitempty"`
+	PodID        string          `json:"podid,omitempty"`
+	PodSeq       int             `json:"podseq,omitempty"`
+	RqdDurs      []int           `json:"rqddurs,omitempty"`
+	SlotInPod    int             `json:"slotinpod,omitempty"`
+	MinCPMPerSec float64         `json:"mincpmpersec,omitempty"`
+	Ext          json.RawMessage `json:"ext,omitempty"`
 }
 
 // Native represents a native impression
@@ -174,6 +194,7 @@ type Site struct {
 	ID            string          `json:"id,omitempty"`
 	Name          string          `json:"name,omitempty"`
 	Domain        string          `json:"domain,omitempty"`
+	CatTax        int             `json:"cattax,omitempty"` // 2.6: Taxonomy for cat
 	Cat           []string        `json:"cat,omitempty"`
 	SectionCat    []string        `json:"sectioncat,omitempty"`
 	PageCat       []string        `json:"pagecat,omitempty"`
@@ -185,6 +206,7 @@ type Site struct {
 	Publisher     *Publisher      `json:"publisher,omitempty"`
 	Content       *Content        `json:"content,omitempty"`
 	Keywords      string          `json:"keywords,omitempty"`
+	KwArray       []string        `json:"kwarray,omitempty"` // 2.6: Keyword array alternative
 	Ext           json.RawMessage `json:"ext,omitempty"`
 }
 
@@ -195,6 +217,7 @@ type App struct {
 	Bundle        string          `json:"bundle,omitempty"`
 	Domain        string          `json:"domain,omitempty"`
 	StoreURL      string          `json:"storeurl,omitempty"`
+	CatTax        int             `json:"cattax,omitempty"` // 2.6: Taxonomy for cat
 	Cat           []string        `json:"cat,omitempty"`
 	SectionCat    []string        `json:"sectioncat,omitempty"`
 	PageCat       []string        `json:"pagecat,omitempty"`
@@ -204,6 +227,7 @@ type App struct {
 	Publisher     *Publisher      `json:"publisher,omitempty"`
 	Content       *Content        `json:"content,omitempty"`
 	Keywords      string          `json:"keywords,omitempty"`
+	KwArray       []string        `json:"kwarray,omitempty"` // 2.6: Keyword array alternative
 	Ext           json.RawMessage `json:"ext,omitempty"`
 }
 
@@ -229,6 +253,7 @@ type Content struct {
 	ISRC               string          `json:"isrc,omitempty"`
 	Producer           *Producer       `json:"producer,omitempty"`
 	URL                string          `json:"url,omitempty"`
+	CatTax             int             `json:"cattax,omitempty"` // 2.6: Taxonomy for cat
 	Cat                []string        `json:"cat,omitempty"`
 	ProdQ              int             `json:"prodq,omitempty"`
 	VideoQuality       int             `json:"videoquality,omitempty"` // Deprecated
@@ -237,13 +262,33 @@ type Content struct {
 	UserRating         string          `json:"userrating,omitempty"`
 	QAGMediaRating     int             `json:"qagmediarating,omitempty"`
 	Keywords           string          `json:"keywords,omitempty"`
+	KwArray            []string        `json:"kwarray,omitempty"` // 2.6: Keyword array alternative
 	LiveStream         int             `json:"livestream,omitempty"`
 	SourceRelationship int             `json:"sourcerelationship,omitempty"`
 	Len                int             `json:"len,omitempty"`
 	Language           string          `json:"language,omitempty"`
+	LangB              string          `json:"langb,omitempty"` // 2.6: Language (IETF BCP 47)
 	Embeddable         int             `json:"embeddable,omitempty"`
 	Data               []Data          `json:"data,omitempty"`
+	Network            *Network        `json:"network,omitempty"` // 2.6: Content network (CTV)
+	Channel            *Channel        `json:"channel,omitempty"` // 2.6: Content channel (CTV)
 	Ext                json.RawMessage `json:"ext,omitempty"`
+}
+
+// Network represents a content network (OpenRTB 2.6, primarily for CTV)
+type Network struct {
+	ID     string          `json:"id,omitempty"`
+	Name   string          `json:"name,omitempty"`
+	Domain string          `json:"domain,omitempty"`
+	Ext    json.RawMessage `json:"ext,omitempty"`
+}
+
+// Channel represents a content channel (OpenRTB 2.6, primarily for CTV)
+type Channel struct {
+	ID     string          `json:"id,omitempty"`
+	Name   string          `json:"name,omitempty"`
+	Domain string          `json:"domain,omitempty"`
+	Ext    json.RawMessage `json:"ext,omitempty"`
 }
 
 // Producer represents a content producer
@@ -258,6 +303,7 @@ type Producer struct {
 // Device represents a user device
 type Device struct {
 	UA             string          `json:"ua,omitempty"`
+	SUA            *UserAgent      `json:"sua,omitempty"` // 2.6: Structured User Agent (Client Hints)
 	Geo            *Geo            `json:"geo,omitempty"`
 	DNT            *int            `json:"dnt,omitempty"`
 	Lmt            *int            `json:"lmt,omitempty"`
@@ -277,6 +323,7 @@ type Device struct {
 	GeoFetch       int             `json:"geofetch,omitempty"`
 	FlashVer       string          `json:"flashver,omitempty"`
 	Language       string          `json:"language,omitempty"`
+	LangB          string          `json:"langb,omitempty"` // 2.6: Language (IETF BCP 47)
 	Carrier        string          `json:"carrier,omitempty"`
 	MCCMNC         string          `json:"mccmnc,omitempty"`
 	ConnectionType int             `json:"connectiontype,omitempty"`
@@ -288,6 +335,25 @@ type Device struct {
 	MacSHA1        string          `json:"macsha1,omitempty"`
 	MacMD5         string          `json:"macmd5,omitempty"`
 	Ext            json.RawMessage `json:"ext,omitempty"`
+}
+
+// UserAgent represents a Structured User Agent per OpenRTB 2.6 (from User-Agent Client Hints)
+type UserAgent struct {
+	Browsers     []BrandVersion  `json:"browsers,omitempty"`
+	Platform     *BrandVersion   `json:"platform,omitempty"`
+	Mobile       *int            `json:"mobile,omitempty"`
+	Architecture string          `json:"architecture,omitempty"`
+	Bitness      string          `json:"bitness,omitempty"`
+	Model        string          `json:"model,omitempty"`
+	Source       int             `json:"source,omitempty"` // 0=unknown, 1=UA Client Hints (low entropy), 2=UA Client Hints (high entropy), 3=parsed from UA string
+	Ext          json.RawMessage `json:"ext,omitempty"`
+}
+
+// BrandVersion represents a browser or platform brand and version
+type BrandVersion struct {
+	Brand   string          `json:"brand,omitempty"`
+	Version []string        `json:"version,omitempty"`
+	Ext     json.RawMessage `json:"ext,omitempty"`
 }
 
 // Geo represents geographic location
@@ -315,6 +381,7 @@ type User struct {
 	YOB        int             `json:"yob,omitempty"`
 	Gender     string          `json:"gender,omitempty"`
 	Keywords   string          `json:"keywords,omitempty"`
+	KwArray    []string        `json:"kwarray,omitempty"` // 2.6: Keyword array alternative
 	CustomData string          `json:"customdata,omitempty"`
 	Geo        *Geo            `json:"geo,omitempty"`
 	Data       []Data          `json:"data,omitempty"`

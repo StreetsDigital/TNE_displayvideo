@@ -389,12 +389,12 @@ func (a *GenericAdapter) transformBid(bid *openrtb.Bid, config *BidderConfig) {
 
 // buildHeaders creates HTTP headers for the request
 func (a *GenericAdapter) buildHeaders(config *BidderConfig) http.Header {
-	headers := http.Header{}
+	headers := adapters.MakeOpenRTBHeaders()
 
-	// Standard OpenRTB headers
-	headers.Set("Content-Type", "application/json;charset=utf-8")
-	headers.Set("Accept", "application/json")
-	headers.Set("X-OpenRTB-Version", config.Endpoint.ProtocolVersion)
+	// Override OpenRTB version with config-specific protocol version
+	if config.Endpoint.ProtocolVersion != "" {
+		headers.Set("X-OpenRTB-Version", config.Endpoint.ProtocolVersion)
+	}
 
 	// Authentication headers
 	switch config.Endpoint.AuthType {

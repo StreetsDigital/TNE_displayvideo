@@ -154,9 +154,7 @@ func (a *SimpleAdapter) MakeRequests(request *openrtb.BidRequest, extraInfo *Ext
 		return nil, []error{NewMarshalError(a.BidderCode, err)}
 	}
 
-	headers := http.Header{}
-	headers.Set("Content-Type", "application/json")
-	headers.Set("Accept", "application/json")
+	headers := MakeOpenRTBHeaders()
 
 	return []*RequestData{{
 		Method:  "POST",
@@ -164,6 +162,16 @@ func (a *SimpleAdapter) MakeRequests(request *openrtb.BidRequest, extraInfo *Ext
 		Body:    body,
 		Headers: headers,
 	}}, nil
+}
+
+// MakeOpenRTBHeaders returns standard headers for OpenRTB 2.6 requests.
+// All adapters should use this to ensure consistent header conventions.
+func MakeOpenRTBHeaders() http.Header {
+	headers := http.Header{}
+	headers.Set("Content-Type", "application/json")
+	headers.Set("Accept", "application/json")
+	headers.Set("x-openrtb-version", "2.6")
+	return headers
 }
 
 // MakeBids implements the standard ORTB response parsing pattern

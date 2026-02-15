@@ -41,9 +41,7 @@ func (a *Adapter) MakeRequests(request *openrtb.BidRequest, extraInfo *adapters.
 		return nil, []error{fmt.Errorf("failed to marshal request: %w", err)}
 	}
 
-	headers := http.Header{}
-	headers.Set("Content-Type", "application/json;charset=utf-8")
-	headers.Set("Accept", "application/json")
+	headers := adapters.MakeOpenRTBHeaders()
 
 	return []*adapters.RequestData{
 		{

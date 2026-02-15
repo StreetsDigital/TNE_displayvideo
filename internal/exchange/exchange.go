@@ -99,6 +99,16 @@ const (
 // maxAllowedTMax caps TMax at a reasonable maximum to prevent resource exhaustion (10 seconds)
 const maxAllowedTMax = 10000
 
+// Exchange-level SChain identity for supply chain transparency
+const (
+	exchangeASI    = "thenexusengine.com"
+	exchangeName   = "TNE Catalyst"
+	exchangeDomain = "thenexusengine.com"
+)
+
+// secureDefault is the default value for imp.secure (1 = HTTPS required)
+var secureDefault = 1
+
 // P2-7: NBR codes consolidated in openrtb/response.go
 // Use openrtb.NoBidXxx constants for all no-bid reasons
 
@@ -479,6 +489,61 @@ func ValidateRequest(req *openrtb.BidRequest) *RequestValidationError {
 	}
 
 	return nil
+}
+
+// enrichRequest applies exchange-level enrichment to the bid request before auction.
+// This ensures required fields have sensible defaults and the exchange's own schain
+// node is appended for supply chain transparency.
+func enrichRequest(req *openrtb.BidRequest) {
+	// Default imp.secure to 1 (HTTPS) if not explicitly set.
+	// Virtually all modern ad serving is HTTPS, and many DSPs reject or
+	// deprioritize inventory without secure=1.
+	for i := range req.Imp {
+		if req.Imp[i].Secure == nil {
+			req.Imp[i].Secure = &secureDefault
+		}
+	}
+
+	// Ensure Source object exists for schain
+	if req.Source == nil {
+		req.Source = &openrtb.Source{}
+	}
+
+	// Get publisher ID for schain SID
+	publisherSID := ""
+	if req.Site != nil && req.Site.Publisher != nil {
+		publisherSID = req.Site.Publisher.ID
+	} else if req.App != nil && req.App.Publisher != nil {
+		publisherSID = req.App.Publisher.ID
+	}
+
+	// Append exchange schain node.
+	// Per IAB SupplyChain spec, every intermediary must add its own node.
+	exchangeNode := openrtb.SupplyChainNode{
+		ASI:    exchangeASI,
+		SID:    publisherSID,
+		Name:   exchangeName,
+		Domain: exchangeDomain,
+		HP:     1, // Catalyst handles payment
+		RID:    req.ID,
+	}
+
+	if req.Source.SChain == nil {
+		req.Source.SChain = &openrtb.SupplyChain{
+			Complete: 0, // We don't know what's upstream
+			Ver:      "1.0",
+			Nodes:    []openrtb.SupplyChainNode{exchangeNode},
+		}
+	} else {
+		req.Source.SChain.Nodes = append(req.Source.SChain.Nodes, exchangeNode)
+	}
+
+	// Default DisplayManager to identify our exchange to SSPs
+	for i := range req.Imp {
+		if req.Imp[i].DisplayManager == "" {
+			req.Imp[i].DisplayManager = exchangeName
+		}
+	}
 }
 
 // BidValidationError represents a bid validation failure
@@ -1318,6 +1383,9 @@ func (e *Exchange) RunAuction(ctx context.Context, req *AuctionRequest) (*Auctio
 		return response, validationErr
 	}
 
+	// Enrich request with exchange defaults (secure=1, schain node, displaymanager)
+	enrichRequest(req.BidRequest)
+
 	// Get timeout from request or config
 	// P1-NEW-1: Validate TMax bounds to prevent abuse
 	timeout := req.Timeout
@@ -1864,6 +1932,23 @@ func (e *Exchange) cloneRequestWithFPD(req *openrtb.BidRequest, bidderCode strin
 		if req.Device.Geo != nil {
 			geoCopy := *req.Device.Geo
 			deviceCopy.Geo = &geoCopy
+		}
+		// Deep copy SUA (Structured User Agent) to prevent cross-bidder corruption
+		if req.Device.SUA != nil {
+			suaCopy := *req.Device.SUA
+			if len(req.Device.SUA.Browsers) > 0 {
+				suaCopy.Browsers = make([]openrtb.BrandVersion, len(req.Device.SUA.Browsers))
+				copy(suaCopy.Browsers, req.Device.SUA.Browsers)
+			}
+			if req.Device.SUA.Platform != nil {
+				platformCopy := *req.Device.SUA.Platform
+				suaCopy.Platform = &platformCopy
+			}
+			if req.Device.SUA.Mobile != nil {
+				mobileCopy := *req.Device.SUA.Mobile
+				suaCopy.Mobile = &mobileCopy
+			}
+			deviceCopy.SUA = &suaCopy
 		}
 		clone.Device = &deviceCopy
 	}
@@ -2449,14 +2534,45 @@ func (e *Exchange) buildBidExtension(vb ValidatedBid) *openrtb.BidExt {
 		targeting["hb_deal_"+displayBidderCode] = bid.DealID
 	}
 
+	// Extract dchain from the original bid ext if present.
+	// DSPs include dchain in bid.ext to provide demand-side transparency.
+	// We parse it and forward it both in the top-level BidExt.DChain and in
+	// meta.dchain (Prebid convention) so publishers can access it either way.
+	var dchain *openrtb.DChain
+	var dchainRaw json.RawMessage
+	if len(bid.Ext) > 0 {
+		dchain = openrtb.ParseDChainFromBidExt(bid.Ext)
+		if dchain != nil {
+			if raw, err := json.Marshal(dchain); err == nil {
+				dchainRaw = raw
+			}
+		}
+	}
+
+	// Build video extension if duration available from bid
+	var videoExt *openrtb.ExtBidPrebidVideo
+	if bid.Dur > 0 {
+		videoExt = &openrtb.ExtBidPrebidVideo{
+			Duration: bid.Dur,
+		}
+	} else if vb.Bid.BidVideo != nil && vb.Bid.BidVideo.Duration > 0 {
+		videoExt = &openrtb.ExtBidPrebidVideo{
+			Duration:        vb.Bid.BidVideo.Duration,
+			PrimaryCategory: vb.Bid.BidVideo.PrimaryCategory,
+		}
+	}
+
 	return &openrtb.BidExt{
 		Prebid: &openrtb.ExtBidPrebid{
 			Type:      bidType,
 			Targeting: targeting,
+			Video:     videoExt,
 			Meta: &openrtb.ExtBidPrebidMeta{
 				MediaType: bidType,
+				DChain:    dchainRaw,
 			},
 		},
+		DChain: dchain,
 	}
 }
 

@@ -63,8 +63,8 @@ func TestMakeRequests(t *testing.T) {
 		t.Errorf("Expected URI %s, got %s", defaultEndpoint, req.URI)
 	}
 
-	if req.Headers.Get("Content-Type") != "application/json;charset=utf-8" {
-		t.Errorf("Expected Content-Type header, got %s", req.Headers.Get("Content-Type"))
+	if req.Headers.Get("Content-Type") != "application/json" {
+		t.Errorf("Expected Content-Type header 'application/json', got %s", req.Headers.Get("Content-Type"))
 	}
 
 	if req.Headers.Get("Accept") != "application/json" {

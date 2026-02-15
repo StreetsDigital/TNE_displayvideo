@@ -26,8 +26,7 @@ func (a *Adapter) MakeRequests(request *openrtb.BidRequest, extraInfo *adapters.
 	if err != nil {
 		return nil, []error{err}
 	}
-	headers := http.Header{}
-	headers.Set("Content-Type", "application/json")
+	headers := adapters.MakeOpenRTBHeaders()
 	return []*adapters.RequestData{{Method: "POST", URI: a.endpoint, Body: body, Headers: headers}}, nil
 }
 

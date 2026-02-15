@@ -37,18 +37,22 @@ type Bid struct {
 	CID            string          `json:"cid,omitempty"`
 	CRID           string          `json:"crid,omitempty"`
 	Tactic         string          `json:"tactic,omitempty"`
+	CatTax         int             `json:"cattax,omitempty"` // 2.6: Taxonomy for cat
 	Cat            []string        `json:"cat,omitempty"`
 	Attr           []int           `json:"attr,omitempty"`
 	API            int             `json:"api,omitempty"`
 	Protocol       int             `json:"protocol,omitempty"`
 	QAGMediaRating int             `json:"qagmediarating,omitempty"`
 	Language       string          `json:"language,omitempty"`
+	LangB          string          `json:"langb,omitempty"` // 2.6: Language (IETF BCP 47)
 	DealID         string          `json:"dealid,omitempty"`
 	W              int             `json:"w,omitempty"`
 	H              int             `json:"h,omitempty"`
 	WRatio         int             `json:"wratio,omitempty"`
 	HRatio         int             `json:"hratio,omitempty"`
 	Exp            int             `json:"exp,omitempty"`
+	MType          int             `json:"mtype,omitempty"` // 2.6: Media type (1=banner, 2=video, 4=native, 3=audio)
+	Dur            int             `json:"dur,omitempty"`   // 2.6: Duration of video/audio creative in seconds
 	Ext            json.RawMessage `json:"ext,omitempty"`
 }
 
@@ -78,6 +82,27 @@ const (
 	NoBidTimeout            NoBidReason = 501 // Request processing timed out
 )
 
+// DChain represents a demand chain object per OpenRTB 2.6
+// It traces the chain of entities on the demand side, from DSP through intermediaries.
+// Mirrors the SupplyChain (schain) structure but for the buy side.
+type DChain struct {
+	Complete int             `json:"complete"`          // 1 if chain is complete back to the DSP
+	Ver      string          `json:"ver"`               // Version of the dchain spec (e.g., "1.0")
+	Nodes    []DChainNode    `json:"nodes"`             // Array of demand chain nodes
+	Ext      json.RawMessage `json:"ext,omitempty"`
+}
+
+// DChainNode represents a single node in the demand chain
+type DChainNode struct {
+	ASI    string          `json:"asi"`              // Canonical domain of the demand system
+	BSid   string          `json:"bsid,omitempty"`   // Buyer/seat ID within the system
+	RID    string          `json:"rid,omitempty"`    // Request/bid ID for this node
+	Name   string          `json:"name,omitempty"`   // Name of the demand system
+	Domain string          `json:"domain,omitempty"` // Domain of the demand system
+	HP     *int            `json:"hp,omitempty"`     // Whether this node handles payment (0/1)
+	Ext    json.RawMessage `json:"ext,omitempty"`
+}
+
 // BidResponseExt represents PBS-specific response extensions
 type BidResponseExt struct {
 	ResponseTimeMillis map[string]int                `json:"responsetimemillis,omitempty"`
@@ -102,6 +127,7 @@ type ExtBidResponsePrebid struct {
 // BidExt represents bid extension
 type BidExt struct {
 	Prebid *ExtBidPrebid `json:"prebid,omitempty"`
+	DChain *DChain       `json:"dchain,omitempty"` // Demand chain from DSP
 }
 
 // ExtBidPrebid represents prebid bid extension
@@ -158,4 +184,19 @@ type ExtBidPrebidMeta struct {
 	RendererName    string          `json:"rendererName,omitempty"`
 	RendererVersion string          `json:"rendererVersion,omitempty"`
 	RendererURL     string          `json:"rendererUrl,omitempty"`
+}
+
+// ParseDChainFromBidExt extracts a DChain from a bid's ext field.
+// Returns nil if no dchain is present or if parsing fails.
+func ParseDChainFromBidExt(ext json.RawMessage) *DChain {
+	if len(ext) == 0 {
+		return nil
+	}
+	var parsed struct {
+		DChain *DChain `json:"dchain,omitempty"`
+	}
+	if err := json.Unmarshal(ext, &parsed); err != nil {
+		return nil
+	}
+	return parsed.DChain
 }
