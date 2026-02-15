@@ -782,9 +782,38 @@ func (h *CatalystBidHandler) convertToOpenRTB(r *http.Request, maiBid *MAIBidReq
 	fpid := ""
 	if maiBid.User != nil && maiBid.User.FPID != "" {
 		fpid = maiBid.User.FPID
-	} else {
+	} else if maiBid.User != nil && maiBid.User.Ext != nil {
+		// Try to extract FPID from user.ext.eids (SDK sends it here)
+		if eids, ok := maiBid.User.Ext["eids"].([]interface{}); ok {
+			for _, eidRaw := range eids {
+				if eid, ok := eidRaw.(map[string]interface{}); ok {
+					if source, ok := eid["source"].(string); ok && source == "thenexusengine.com" {
+						if uids, ok := eid["uids"].([]interface{}); ok && len(uids) > 0 {
+							if uid, ok := uids[0].(map[string]interface{}); ok {
+								if id, ok := uid["id"].(string); ok {
+									fpid = id
+									logger.Log.Debug().
+										Str("fpid", fpid).
+										Msg("Extracted FPID from user.ext.eids")
+									break
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
+	// Fallback to cookie if still not found
+	if fpid == "" {
 		cookieSync := usersync.ParseCookie(r)
 		fpid = cookieSync.GetFPID()
+		if fpid != "" {
+			logger.Log.Debug().
+				Str("fpid", fpid).
+				Msg("Extracted FPID from cookie")
+		}
 	}
 
 	// 1. From database (most persistent and reliable source)
